@@ -1,7 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import { extractText, isAvailable } from 'expo-pdf-text-extract';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -16,14 +15,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useSessionReports } from '@/hooks/use-session-reports';
 import { useTheme } from '@/hooks/use-theme';
-import {
-  IMPORTED_FILES_STORAGE_KEY,
-  isImportedFile,
-  sanitizeImportedFileName,
-  type ImportedFile,
-} from '@/utils/imported-files';
-import { parseStatement } from '@/utils/statement-stats';
+import { sanitizeImportedFileName } from '@/utils/imported-files';
+import type { ImportedReport, StatementPeriod } from '@/utils/imported-files';
+import { createStatementPeriod, parseStatement } from '@/utils/statement-stats';
 
 function formatFileSize(size: number | null) {
   if (size === null) {
@@ -38,18 +34,29 @@ function formatFileSize(size: number | null) {
   return `${(size / (1024 * 1024)).toFixed(1)} МБ`;
 }
 
-function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return 'Дата неизвестна';
+function formatPeriodDate(value: string) {
+  const [year, month, day] = value.split('-');
+  return `${day}.${month}.${year}`;
+}
+
+function formatPeriod(period: StatementPeriod | null) {
+  if (!period) {
+    return 'Период не определен';
   }
-  return date.toLocaleString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  if (period.kind === 'all-time') {
+    return 'За всё время';
+  }
+  return `${formatPeriodDate(period.start)} – ${formatPeriodDate(period.end)}`;
+}
+
+function getPeriodSourceLabel(period: StatementPeriod) {
+  if (period.source === 'filename') {
+    return 'Определен по имени файла — проверьте';
+  }
+  if (period.source === 'manual') {
+    return 'Указан вручную';
+  }
+  return 'Определен по тексту PDF';
 }
 
 function getPdfErrorCode(error: unknown) {
@@ -61,59 +68,17 @@ function getPdfErrorCode(error: unknown) {
 
 export default function ImportsScreen() {
   const theme = useTheme();
-  const [files, setFiles] = useState<ImportedFile[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { reports, addReports, updateReportPeriod, clearReports } = useSessionReports();
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [passwordPromptVisible, setPasswordPromptVisible] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState('');
   const [pdfPassword, setPdfPassword] = useState('');
+  const [editingPeriodIds, setEditingPeriodIds] = useState<string[]>([]);
+  const [periodDrafts, setPeriodDrafts] = useState<
+    Record<string, { start: string; end: string }>
+  >({});
   const passwordResolver = useRef<((password: string | null) => void) | null>(null);
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadHistory() {
-      try {
-        const storedHistory = await AsyncStorage.getItem(IMPORTED_FILES_STORAGE_KEY);
-        if (storedHistory === null) {
-          return;
-        }
-
-        const parsed: unknown = JSON.parse(storedHistory);
-        if (!Array.isArray(parsed) || !parsed.every(isImportedFile)) {
-          throw new Error('Формат сохраненной истории поврежден.');
-        }
-        const safeHistory = parsed.map((file) => ({
-          ...file,
-          name: sanitizeImportedFileName(file.name),
-        }));
-        if (active) {
-          setFiles(safeHistory);
-        }
-        if (safeHistory.some((file, index) => file.name !== parsed[index].name)) {
-          await AsyncStorage.setItem(IMPORTED_FILES_STORAGE_KEY, JSON.stringify(safeHistory));
-        }
-      } catch (loadError) {
-        if (active) {
-          setError(
-            loadError instanceof Error
-              ? `Не удалось загрузить историю: ${loadError.message}`
-              : 'Не удалось загрузить историю файлов.'
-          );
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadHistory();
-    return () => {
-      active = false;
-    };
-  }, []);
 
   function requestPdfPassword(incorrect = false) {
     setPdfPassword('');
@@ -158,6 +123,43 @@ export default function ImportsScreen() {
     }
   }
 
+  function openPeriodEditor(report: ImportedReport) {
+    const period =
+      report.period?.kind === 'range'
+        ? { start: formatPeriodDate(report.period.start), end: formatPeriodDate(report.period.end) }
+        : { start: '', end: '' };
+    setPeriodDrafts((current) => ({ ...current, [report.id]: period }));
+    setEditingPeriodIds((current) =>
+      current.includes(report.id) ? current : [...current, report.id]
+    );
+  }
+
+  function closePeriodEditor(id: string) {
+    setEditingPeriodIds((current) => current.filter((reportId) => reportId !== id));
+  }
+
+  function saveReportPeriod(id: string) {
+    const draft = periodDrafts[id];
+    const period = draft ? createStatementPeriod(draft.start, draft.end) : null;
+    if (!period) {
+      return;
+    }
+
+    updateReportPeriod(id, period);
+    closePeriodEditor(id);
+  }
+
+  function setReportAsAllTime(id: string) {
+    updateReportPeriod(id, { kind: 'all-time', source: 'manual' });
+    closePeriodEditor(id);
+  }
+
+  function clearCurrentReports() {
+    clearReports();
+    setEditingPeriodIds([]);
+    setPeriodDrafts({});
+  }
+
   async function importPdfs() {
     setError(null);
     setImporting(true);
@@ -166,7 +168,7 @@ export default function ImportsScreen() {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/pdf',
         multiple: true,
-        copyToCacheDirectory: true,
+        copyToCacheDirectory: false,
       });
 
       if (result.canceled) {
@@ -177,12 +179,11 @@ export default function ImportsScreen() {
         (asset) => asset.mimeType === 'application/pdf' || asset.name.toLowerCase().endsWith('.pdf')
       );
       if (selectedFiles.length === 0) {
-        setError('Выберите PDF-файл, чтобы добавить его в историю.');
+        setError('Выберите PDF-файл для анализа.');
         return;
       }
 
-      const importedAt = new Date().toISOString();
-      const additions: ImportedFile[] = [];
+      const additions: ImportedReport[] = [];
 
       for (const [index, file] of selectedFiles.entries()) {
         let statement: ReturnType<typeof parseStatement> | undefined;
@@ -190,7 +191,7 @@ export default function ImportsScreen() {
 
         if (isAvailable()) {
           const text = await extractPdfText(file.uri);
-          statement = parseStatement(text);
+          statement = parseStatement(text, file.name);
           if (statement.statistics.length === 0 && statement.positions.length === 0) {
             analysisError = 'В отчете не найдены знакомые финансовые показатели.';
           }
@@ -202,8 +203,9 @@ export default function ImportsScreen() {
         additions.push({
           id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
           name: sanitizeImportedFileName(file.name),
-          importedAt,
           size: typeof file.size === 'number' ? file.size : null,
+          period: statement?.period ?? null,
+          periodConflict: statement?.periodConflict,
           statistics: statement?.statistics ?? [],
           accountCurrency: statement?.accountCurrency,
           positions: statement?.positions ?? [],
@@ -212,10 +214,20 @@ export default function ImportsScreen() {
         });
       }
 
-      const updatedHistory = [...additions, ...files];
-
-      await AsyncStorage.setItem(IMPORTED_FILES_STORAGE_KEY, JSON.stringify(updatedHistory));
-      setFiles(updatedHistory);
+      addReports(additions);
+      const reportsWithoutPeriod = additions.filter((report) => !report.period);
+      if (reportsWithoutPeriod.length) {
+        setEditingPeriodIds((current) => [
+          ...current,
+          ...reportsWithoutPeriod.map((report) => report.id),
+        ]);
+        setPeriodDrafts((current) => ({
+          ...current,
+          ...Object.fromEntries(
+            reportsWithoutPeriod.map((report) => [report.id, { start: '', end: '' }])
+          ),
+        }));
+      }
     } catch (importError) {
       setError(
         importError instanceof Error
@@ -235,19 +247,19 @@ export default function ImportsScreen() {
           showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <ThemedText type="smallBold" themeColor="textSecondary">
-              XTB · ИСТОРИЯ ИМПОРТА
+              XTB · АНАЛИЗ ОТЧЕТОВ
             </ThemedText>
             <ThemedText type="title" style={styles.title}>
-              Файлы
+              Анализ
             </ThemedText>
             <ThemedText themeColor="textSecondary">
-              Выберите PDF-отчет, чтобы извлечь основные финансовые показатели.
+              PDF обрабатывается на устройстве. Результаты доступны только пока приложение открыто.
             </ThemedText>
           </View>
 
           <Pressable
             accessibilityRole="button"
-            disabled={importing || loading}
+            disabled={importing}
             onPress={importPdfs}
             style={({ pressed }) => [
               styles.importButton,
@@ -265,12 +277,23 @@ export default function ImportsScreen() {
 
           <View style={styles.historyHeader}>
             <ThemedText type="subtitle" style={styles.sectionTitle}>
-              История
+              Отчеты в этой сессии
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              {files.length} {files.length === 1 ? 'файл' : 'файлов'}
+              {reports.length} {reports.length === 1 ? 'отчет' : 'отчетов'}
             </ThemedText>
           </View>
+
+          {reports.length > 0 && (
+            <Pressable
+              accessibilityRole="button"
+              onPress={clearCurrentReports}
+              style={styles.clearButton}>
+              <ThemedText type="smallBold" themeColor="textSecondary">
+                Очистить результаты
+              </ThemedText>
+            </Pressable>
+          )}
 
           {error && (
             <ThemedView type="backgroundElement" style={styles.errorCard} accessibilityRole="alert">
@@ -278,42 +301,146 @@ export default function ImportsScreen() {
             </ThemedView>
           )}
 
-          {loading ? (
-            <ActivityIndicator color={theme.textSecondary} style={styles.loader} />
-          ) : files.length === 0 ? (
+          {reports.length === 0 ? (
             <ThemedView type="backgroundElement" style={styles.emptyCard}>
               <ThemedText type="subtitle" style={styles.emptyIcon}>
                 PDF
               </ThemedText>
-              <ThemedText type="smallBold">Здесь пока пусто</ThemedText>
+              <ThemedText type="smallBold">Импортируйте отчет для анализа</ThemedText>
               <ThemedText type="small" themeColor="textSecondary" style={styles.emptyHint}>
-                Добавленные отчеты появятся в этой истории.
+                Прибыль, количество позиций и их объем будут сгруппированы по периоду отчета.
               </ThemedText>
             </ThemedView>
           ) : (
             <View style={styles.fileList}>
-              {files.map((file) => (
-                <ThemedView key={file.id} type="backgroundElement" style={styles.fileCard}>
-                  <View style={styles.fileBadge}>
-                    <ThemedText type="smallBold" style={styles.fileBadgeText}>
-                      PDF
-                    </ThemedText>
-                  </View>
-                  <View style={styles.fileDetails}>
-                    <ThemedText type="smallBold" numberOfLines={2}>
-                      {file.name}
-                    </ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {formatDate(file.importedAt)} · {formatFileSize(file.size)}
-                    </ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {file.statistics?.length
-                        ? `Показателей: ${file.statistics.length}`
-                        : file.analysisError ?? 'Импортируйте файл повторно для анализа'}
-                    </ThemedText>
-                  </View>
-                </ThemedView>
-              ))}
+              {reports.map((report) => {
+                const draft = periodDrafts[report.id] ?? { start: '', end: '' };
+                const periodIsValid = createStatementPeriod(draft.start, draft.end) !== null;
+                const editingPeriod = editingPeriodIds.includes(report.id);
+                const profit = report.statistics?.find(
+                  (statistic) => statistic.label === 'Прибыль / убыток'
+                );
+
+                return (
+                  <ThemedView
+                    key={report.id}
+                    type="backgroundElement"
+                    style={styles.fileCard}>
+                    <View style={styles.fileBadge}>
+                      <ThemedText type="smallBold" style={styles.fileBadgeText}>
+                        PDF
+                      </ThemedText>
+                    </View>
+                    <View style={styles.fileDetails}>
+                      <ThemedText type="smallBold" numberOfLines={2}>
+                        {report.name}
+                      </ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {formatFileSize(report.size)} · {formatPeriod(report.period)}
+                      </ThemedText>
+                      {report.period && (
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {getPeriodSourceLabel(report.period)}
+                        </ThemedText>
+                      )}
+                      {report.periodConflict && (
+                        <ThemedText type="small" themeColor="textSecondary">
+                          Даты в PDF и имени файла расходятся — проверьте период.
+                        </ThemedText>
+                      )}
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {report.positions?.length ?? 0} позиций
+                        {profit ? ` · Прибыль / убыток: ${profit.value}` : ''}
+                      </ThemedText>
+                      {report.analysisError && (
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {report.analysisError}
+                        </ThemedText>
+                      )}
+
+                      {!editingPeriod ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() => openPeriodEditor(report)}
+                          style={styles.periodAction}>
+                          <ThemedText type="smallBold">
+                            {report.period ? 'Изменить период' : 'Указать период'}
+                          </ThemedText>
+                        </Pressable>
+                      ) : (
+                        <View style={styles.periodEditor}>
+                          <ThemedText type="smallBold">Период отчета</ThemedText>
+                          <View style={styles.periodInputs}>
+                            <TextInput
+                              accessibilityLabel="Начало периода, ДД.ММ.ГГГГ"
+                              autoCapitalize="none"
+                              onChangeText={(start) =>
+                                setPeriodDrafts((current) => ({
+                                  ...current,
+                                  [report.id]: { ...draft, start },
+                                }))
+                              }
+                              placeholder="ДД.ММ.ГГГГ"
+                              placeholderTextColor={theme.textSecondary}
+                              style={[
+                                styles.periodInput,
+                                { borderColor: theme.textSecondary, color: theme.text },
+                              ]}
+                              value={draft.start}
+                            />
+                            <TextInput
+                              accessibilityLabel="Конец периода, ДД.ММ.ГГГГ"
+                              autoCapitalize="none"
+                              onChangeText={(end) =>
+                                setPeriodDrafts((current) => ({
+                                  ...current,
+                                  [report.id]: { ...draft, end },
+                                }))
+                              }
+                              placeholder="ДД.ММ.ГГГГ"
+                              placeholderTextColor={theme.textSecondary}
+                              style={[
+                                styles.periodInput,
+                                { borderColor: theme.textSecondary, color: theme.text },
+                              ]}
+                              value={draft.end}
+                            />
+                          </View>
+                          <View style={styles.periodActions}>
+                            <Pressable
+                              accessibilityRole="button"
+                              disabled={!periodIsValid}
+                              onPress={() => saveReportPeriod(report.id)}
+                              style={styles.periodAction}>
+                              <ThemedText
+                                type="smallBold"
+                                themeColor={periodIsValid ? 'text' : 'textSecondary'}>
+                                Применить даты
+                              </ThemedText>
+                            </Pressable>
+                            <Pressable
+                              accessibilityRole="button"
+                              onPress={() => setReportAsAllTime(report.id)}
+                              style={styles.periodAction}>
+                              <ThemedText type="smallBold" themeColor="textSecondary">
+                                За всё время
+                              </ThemedText>
+                            </Pressable>
+                            <Pressable
+                              accessibilityRole="button"
+                              onPress={() => closePeriodEditor(report.id)}
+                              style={styles.periodAction}>
+                              <ThemedText type="small" themeColor="textSecondary">
+                                Отмена
+                              </ThemedText>
+                            </Pressable>
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  </ThemedView>
+                );
+              })}
             </View>
           )}
         </ScrollView>
@@ -417,6 +544,12 @@ const styles = StyleSheet.create({
     marginTop: Spacing.five,
     marginBottom: Spacing.three,
   },
+  clearButton: {
+    alignSelf: 'flex-end',
+    minHeight: 40,
+    justifyContent: 'center',
+    marginBottom: Spacing.two,
+  },
   sectionTitle: {
     fontSize: 22,
     lineHeight: 28,
@@ -425,9 +558,6 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     marginBottom: Spacing.three,
     borderRadius: Spacing.three,
-  },
-  loader: {
-    marginTop: Spacing.five,
   },
   emptyCard: {
     alignItems: 'center',
@@ -467,6 +597,30 @@ const styles = StyleSheet.create({
   fileDetails: {
     flex: 1,
     gap: Spacing.one,
+  },
+  periodEditor: {
+    gap: Spacing.two,
+    marginTop: Spacing.one,
+  },
+  periodInputs: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  periodInput: {
+    flex: 1,
+    minHeight: 44,
+    paddingHorizontal: Spacing.two,
+    borderWidth: 1,
+    borderRadius: Spacing.two,
+  },
+  periodActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  periodAction: {
+    minHeight: 40,
+    justifyContent: 'center',
   },
   modalBackdrop: {
     flex: 1,

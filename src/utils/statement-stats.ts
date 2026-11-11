@@ -1,4 +1,4 @@
-import type { StatementPosition, StatementStatistic } from './imported-files';
+import type { StatementPeriod, StatementPosition, StatementStatistic } from './imported-files';
 
 const ACCOUNT_CURRENCIES = 'USD|EUR|GBP|RUB|PLN|CZK|HUF|CHF|JPY|CAD|AUD|HKD|USDT';
 const NUMBER_SOURCE = String.raw`[-+]?(?:\d{1,3}(?:[ \u00a0\u202f,.'’]\d{3})+|\d+)(?:[.,]\d+)?`;
@@ -19,7 +19,7 @@ const LEGACY_STATISTIC_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
   },
   {
     label: 'Прибыль / убыток',
-    pattern: /\b(realized|unrealized)?\s*(profit|loss|result|p\s*\/?\s*l|pnl)\b|прибыл[ьи]|убыток|результат/i,
+    pattern: /\b(realized|unrealized)?\s*(profit|loss|result|p\s*\/?\s*l|pnl)\b|\bzysk\b|\bstrata\b|\bwynik\b|прибыл[ьи]|убыток|результат/i,
   },
   {
     label: 'Пополнения',
@@ -44,11 +44,159 @@ const LEGACY_STATISTIC_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
 ];
 
 export type ParsedStatement = {
+  period: StatementPeriod | null;
+  periodConflict: boolean;
   statistics: StatementStatistic[];
   accountCurrency?: string;
   positions: StatementPosition[];
   hasOtherAssets?: boolean;
 };
+
+export function parsePeriodDate(value: string) {
+  const trimmed = value.trim();
+  const isoMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(trimmed);
+  const localMatch = /^(\d{1,2})[./](\d{1,2})[./](\d{4})$/.exec(trimmed);
+  const year = Number(isoMatch?.[1] ?? localMatch?.[3]);
+  const month = Number(isoMatch?.[2] ?? localMatch?.[2]);
+  const day = Number(isoMatch?.[3] ?? localMatch?.[1]);
+  if (!isoMatch && !localMatch) {
+    return null;
+  }
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day
+    .toString()
+    .padStart(2, '0')}`;
+}
+
+export function createStatementPeriod(start: string, end: string): StatementPeriod | null {
+  const parsedStart = parsePeriodDate(start);
+  const parsedEnd = parsePeriodDate(end);
+  if (!parsedStart || !parsedEnd || parsedStart > parsedEnd) {
+    return null;
+  }
+
+  return { kind: 'range', start: parsedStart, end: parsedEnd, source: 'manual' };
+}
+
+function parseDateRange(first: string, second: string): StatementPeriod | null {
+  const start = parsePeriodDate(first);
+  const end = parsePeriodDate(second);
+  if (!start || !end || start > end) {
+    return null;
+  }
+  return { kind: 'range', start, end, source: 'pdf' };
+}
+
+function findFilenamePeriod(fileName: string): StatementPeriod | null {
+  const yearFirst = /(20\d{2})[-_ ]?Q([1-4])/i.exec(fileName);
+  const quarterFirst = /Q([1-4])[-_ ]?(20\d{2})/i.exec(fileName);
+  const year = Number(yearFirst?.[1] ?? quarterFirst?.[2]);
+  const quarter = Number(yearFirst?.[2] ?? quarterFirst?.[1]);
+  if (!year || !quarter) {
+    return null;
+  }
+
+  const month = (quarter - 1) * 3 + 1;
+  const start = `${year}-${month.toString().padStart(2, '0')}-01`;
+  const endDate = new Date(Date.UTC(year, month + 2, 0));
+  const end = `${year}-${(month + 2).toString().padStart(2, '0')}-${endDate
+    .getUTCDate()
+    .toString()
+    .padStart(2, '0')}`;
+  return { kind: 'range', start, end, source: 'filename' };
+}
+
+function periodsMatch(first: StatementPeriod, second: StatementPeriod) {
+  if (first.kind !== second.kind) {
+    return false;
+  }
+  if (first.kind === 'all-time' || second.kind === 'all-time') {
+    return first.kind === 'all-time' && second.kind === 'all-time';
+  }
+  return first.start === second.start && first.end === second.end;
+}
+
+function findStatementPeriod(text: string, fileName?: string) {
+  const filenamePeriod = fileName ? findFilenamePeriod(fileName) : null;
+  let pdfPeriod: StatementPeriod | null = null;
+  if (
+    /all[\s-]+time|since (?:the )?account opening|за всё время|за все время|с момента открытия|od początku|od otwarcia/i.test(
+      text
+    )
+  ) {
+    pdfPeriod = { kind: 'all-time', source: 'pdf' };
+  }
+
+  const datePattern = String.raw`(?:\d{1,2}[./]\d{1,2}[./]\d{4}|\d{4}-\d{1,2}-\d{1,2})`;
+  const rangePattern = new RegExp(
+    String.raw`(${datePattern})\s*(?:-|–|—|\bto\b|\bdo\b)\s*(${datePattern})`,
+    'gi'
+  );
+  const ranges = Array.from(text.matchAll(rangePattern));
+  const anchoredRange = ranges.find((match) => {
+    const start = match.index ?? 0;
+    const context = text.slice(Math.max(0, start - 120), start + match[0].length + 40);
+    return /okres|period|kwartal|quarter|zestawienie|report/i.test(context);
+  });
+  const range = anchoredRange ?? (ranges.length === 1 ? ranges[0] : undefined);
+  if (!pdfPeriod && range) {
+    pdfPeriod = parseDateRange(range[1], range[2]);
+  }
+
+  if (pdfPeriod) {
+    return {
+      period: pdfPeriod,
+      conflict: filenamePeriod !== null && !periodsMatch(pdfPeriod, filenamePeriod),
+    };
+  }
+
+  return {
+    period: filenamePeriod,
+    conflict: false,
+  };
+}
+
+export function parseStatisticNumber(value: string) {
+  const trimmed = value.trim();
+  const parenthesizedNegative = /^\(.*\)$/.test(trimmed);
+  let numeric = trimmed.replace(/[^\d,.'’+-]/g, '').replace(/[’']/g, '');
+  if (!/\d/.test(numeric)) {
+    return null;
+  }
+
+  const commaIndex = numeric.lastIndexOf(',');
+  const dotIndex = numeric.lastIndexOf('.');
+  const decimalIndex = Math.max(commaIndex, dotIndex);
+  const hasBothSeparators = commaIndex >= 0 && dotIndex >= 0;
+  const trailingDigits = decimalIndex < 0 ? 0 : numeric.length - decimalIndex - 1;
+  if (hasBothSeparators || (decimalIndex >= 0 && trailingDigits > 0 && trailingDigits <= 2)) {
+    const decimalSeparator = numeric[decimalIndex];
+    numeric = numeric
+      .split('')
+      .filter((character, index) => {
+        return character === '+' || character === '-' || /\d/.test(character) || index === decimalIndex;
+      })
+      .join('')
+      .replace(decimalSeparator, '.');
+  } else {
+    numeric = numeric.replace(/[.,]/g, '');
+  }
+
+  const parsed = Number(numeric);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return parenthesizedNegative ? -Math.abs(parsed) : parsed;
+}
 
 function normalizeText(text: string) {
   return text
@@ -240,8 +388,9 @@ function parseLegacyStatistics(text: string): StatementStatistic[] {
   return Array.from(found.values());
 }
 
-export function parseStatement(text: string): ParsedStatement {
+export function parseStatement(text: string, fileName?: string): ParsedStatement {
   const normalizedText = normalizeText(text);
+  const detectedPeriod = findStatementPeriod(normalizedText, fileName);
   const summary = findAccountSummary(normalizedText);
   const statistics = new Map<string, StatementStatistic>();
 
@@ -255,6 +404,8 @@ export function parseStatement(text: string): ParsedStatement {
   }
 
   return {
+    period: detectedPeriod.period,
+    periodConflict: detectedPeriod.conflict,
     statistics: Array.from(statistics.values()),
     accountCurrency: summary.accountCurrency,
     positions: parsePositions(normalizedText, summary.accountCurrency),

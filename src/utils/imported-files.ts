@@ -1,5 +1,3 @@
-export const IMPORTED_FILES_STORAGE_KEY = '@stxtb/imported-files';
-
 export function sanitizeImportedFileName(name: string) {
   const sanitized = name
     .replace(/^\d+[_-]+/, '')
@@ -14,6 +12,18 @@ export type StatementStatistic = {
   value: string;
 };
 
+export type StatementPeriod =
+  | {
+      kind: 'range';
+      start: string;
+      end: string;
+      source: 'pdf' | 'filename' | 'manual';
+    }
+  | {
+      kind: 'all-time';
+      source: 'pdf' | 'manual';
+    };
+
 export type StatementPosition = {
   number: string;
   symbol: string;
@@ -24,59 +34,15 @@ export type StatementPosition = {
   volume: string;
 };
 
-export type ImportedFile = {
+export type ImportedReport = {
   id: string;
   name: string;
-  importedAt: string;
   size: number | null;
+  period: StatementPeriod | null;
+  periodConflict?: boolean;
   statistics?: StatementStatistic[];
   accountCurrency?: string;
   positions?: StatementPosition[];
   hasOtherAssets?: boolean;
   analysisError?: string;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object';
-}
-
-function isStatementStatistic(value: unknown): value is StatementStatistic {
-  return (
-    isRecord(value) &&
-    typeof value.label === 'string' &&
-    typeof value.value === 'string'
-  );
-}
-
-function isStatementPosition(value: unknown): value is StatementPosition {
-  return (
-    isRecord(value) &&
-    typeof value.number === 'string' &&
-    typeof value.symbol === 'string' &&
-    typeof value.instrumentName === 'string' &&
-    typeof value.isin === 'string' &&
-    typeof value.assetClass === 'string' &&
-    typeof value.marketValue === 'string' &&
-    typeof value.volume === 'string'
-  );
-}
-
-export function isImportedFile(value: unknown): value is ImportedFile {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.id === 'string' &&
-    typeof value.name === 'string' &&
-    typeof value.importedAt === 'string' &&
-    (typeof value.size === 'number' || value.size === null) &&
-    (value.statistics === undefined ||
-      (Array.isArray(value.statistics) && value.statistics.every(isStatementStatistic))) &&
-    (value.accountCurrency === undefined || typeof value.accountCurrency === 'string') &&
-    (value.positions === undefined ||
-      (Array.isArray(value.positions) && value.positions.every(isStatementPosition))) &&
-    (value.hasOtherAssets === undefined || typeof value.hasOtherAssets === 'boolean') &&
-    (value.analysisError === undefined || typeof value.analysisError === 'string')
-  );
-}
