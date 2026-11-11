@@ -16,6 +16,10 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
+## PDF reports
+
+Import PDF statements from the **Files** tab. On iOS and Android development builds, the app extracts common balance, equity, profit/loss, deposit, withdrawal, fee, dividend, and swap figures and shows them on the home screen. A PDF password is requested in-app when needed and is not saved. PDF text extraction requires a development build; Expo Go and web builds show an availability message.
+
 In the output, you'll find options to open the app in a
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)

@@ -5,14 +5,21 @@ node_modules/
 
 # Expo
 .expo/
-dist/
-web-build/
+/dist/
+/web-build/
 expo-env.d.ts
+
+# local environment files
+.env*
+!.env*.example
+!.env*.sample
+!.env*.template
 
 # Native
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
@@ -22,22 +29,37 @@ expo-env.d.ts
 .metro-health-check*
 
 # debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+bun-debug.log*
 
-# macOS
+# operating systems
 .DS_Store
+Thumbs.db
+Desktop.ini
 *.pem
-
-# local env files
-.env*.local
 
 # typescript
 *.tsbuildinfo
 
-example
+# generated and cached files
+/coverage/
+.cache/
+.parcel-cache/
+.turbo/
+.eslintcache
+
+# editor temporary files
+*.swp
+*.swo
+*~
 
 # generated native folders
 /ios
 /android
+
+# local workspace instructions
+.copilot-instructions.md
