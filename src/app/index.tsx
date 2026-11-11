@@ -13,7 +13,6 @@ import {
   isImportedFile,
   sanitizeImportedFileName,
   type ImportedFile,
-  type StatementPosition,
   type StatementStatistic,
 } from '@/utils/imported-files';
 
@@ -33,12 +32,12 @@ function formatDate(value: string) {
   }
   return date.toLocaleDateString('ru-RU', {
     day: 'numeric',
-    month: 'long',
+    month: 'short',
     year: 'numeric',
   });
 }
 
-function StatisticRow({
+function StatisticCard({
   statistic,
   currency,
 }: {
@@ -46,54 +45,51 @@ function StatisticRow({
   currency?: string;
 }) {
   return (
-    <View style={styles.statisticCard}>
-      <ThemedText type="small" themeColor="textSecondary">
+    <ThemedView type="backgroundSelected" style={styles.statisticCard}>
+      <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
         {statistic.label}
       </ThemedText>
-      <ThemedText type="smallBold" style={styles.metricValue}>
+      <ThemedText type="smallBold" numberOfLines={1} adjustsFontSizeToFit>
         {formatStatisticValue(statistic.value, currency)}
       </ThemedText>
-    </View>
+    </ThemedView>
   );
 }
 
-function PositionCard({ position }: { position: StatementPosition }) {
+function AssetRow({
+  instrumentName,
+  symbol,
+  assetClass,
+  marketValue,
+  volume,
+}: {
+  instrumentName: string;
+  symbol: string;
+  assetClass: string;
+  marketValue: string;
+  volume: string;
+}) {
   return (
-    <ThemedView type="backgroundSelected" style={styles.positionCard}>
-      <View style={styles.positionHeading}>
-        <View style={styles.positionTitle}>
-          <ThemedText type="smallBold">{position.symbol}</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            № {position.number}
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
-            {position.instrumentName}
-          </ThemedText>
-        </View>
-        {position.assetClass ? (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.assetClass}>
-            {position.assetClass}
-          </ThemedText>
-        ) : null}
+    <View style={styles.assetRow}>
+      <View style={styles.assetName}>
+        <ThemedText type="smallBold" numberOfLines={2}>
+          {instrumentName || symbol}
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+          {assetClass ? `${symbol} · ${assetClass}` : symbol}
+        </ThemedText>
       </View>
-      <ThemedText type="small" themeColor="textSecondary">
-        {position.isin}
-      </ThemedText>
-      <View style={styles.positionValues}>
-        <View style={styles.positionValue}>
-          <ThemedText type="small" themeColor="textSecondary">
-            Рыночная стоимость
-          </ThemedText>
-          <ThemedText type="smallBold">{position.marketValue || '—'}</ThemedText>
-        </View>
-        <View style={[styles.positionValue, styles.volumeValue]}>
-          <ThemedText type="small" themeColor="textSecondary">
-            Объем
-          </ThemedText>
-          <ThemedText type="smallBold">{position.volume || '—'}</ThemedText>
-        </View>
+      <View style={styles.assetValue}>
+        <ThemedText type="smallBold" numberOfLines={1} adjustsFontSizeToFit>
+          {marketValue || '—'}
+        </ThemedText>
       </View>
-    </ThemedView>
+      <View style={[styles.assetValue, styles.volumeValue]}>
+        <ThemedText type="smallBold" numberOfLines={1} adjustsFontSizeToFit>
+          {volume || '—'}
+        </ThemedText>
+      </View>
+    </View>
   );
 }
 
@@ -158,12 +154,43 @@ export default function HomeScreen() {
     };
   }, [isFocused]);
 
-  const hasReportData = files.some(
-    (file) =>
-      (file.statistics?.length ?? 0) > 0 ||
-      (file.positions?.length ?? 0) > 0 ||
-      file.hasOtherAssets === false
-  );
+  const latestReport = files
+    .filter(
+      (file) =>
+        (file.statistics?.length ?? 0) > 0 ||
+        (file.positions?.length ?? 0) > 0 ||
+        file.hasOtherAssets === false
+    )
+    .sort((first, second) => Date.parse(second.importedAt) - Date.parse(first.importedAt))[0];
+  const positions = latestReport?.positions ?? [];
+  const statistics = [...(latestReport?.statistics ?? [])].sort((first, second) => {
+    const priority = ['Стоимость счета', 'Баланс', 'Свободные средства', 'Обеспечение'];
+    const firstPriority = priority.indexOf(first.label);
+    const secondPriority = priority.indexOf(second.label);
+    return (firstPriority < 0 ? priority.length : firstPriority) -
+      (secondPriority < 0 ? priority.length : secondPriority);
+  });
+  const metrics = latestReport
+    ? [
+        ...statistics.slice(0, 3).map((statistic) => ({
+          label: statistic.label,
+          value: formatStatisticValue(statistic.value, latestReport.accountCurrency),
+        })),
+        { label: 'Позиций', value: String(positions.length) },
+        {
+          label: 'Классов активов',
+          value: String(new Set(positions.map((position) => position.assetClass).filter(Boolean)).size),
+        },
+        { label: 'Отчетов', value: String(files.length) },
+      ].slice(0, 4)
+    : [];
+
+  const latestImportedFile = files
+    .slice()
+    .sort((first, second) => Date.parse(second.importedAt) - Date.parse(first.importedAt))[0];
+  const emptyMessage =
+    latestImportedFile?.analysisError ??
+    'Импортируйте PDF-отчет с позициями или финансовыми показателями — они появятся здесь.';
 
   return (
     <ThemedView style={styles.screen}>
@@ -173,14 +200,20 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <ThemedText type="smallBold" themeColor="textSecondary">
-              XTB · ОБЗОР
+              XTB · ОБЗОР ПОРТФЕЛЯ
             </ThemedText>
             <ThemedText type="title" style={styles.title}>
-              Результаты
+              Портфель
             </ThemedText>
-            <ThemedText themeColor="textSecondary">
-              Основные показатели из импортированных отчетов.
-            </ThemedText>
+            {latestReport ? (
+              <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                {formatDate(latestReport.importedAt)} · {latestReport.name}
+              </ThemedText>
+            ) : (
+              <ThemedText type="small" themeColor="textSecondary">
+                Данные из последнего импортированного отчета.
+              </ThemedText>
+            )}
           </View>
 
           {error ? (
@@ -192,124 +225,70 @@ export default function HomeScreen() {
             </ThemedView>
           ) : loading ? (
             <ActivityIndicator color={theme.textSecondary} style={styles.loader} />
-          ) : files.length === 0 ? (
+          ) : !latestReport ? (
             <ThemedView type="backgroundElement" style={styles.messageCard}>
-              <ThemedText type="small">
-                Импортируйте PDF на вкладке «Файлы» — здесь появятся найденные показатели.
-              </ThemedText>
+              <ThemedText type="small">{emptyMessage}</ThemedText>
             </ThemedView>
-          ) : hasReportData ? (
-            <View style={styles.reportList}>
-              {files.map((file) => {
-                const statistics = file.statistics ?? [];
-                const accountValue = statistics.find(
-                  (statistic) => statistic.label === 'Стоимость счета'
-                );
-                const secondaryStatistics = statistics.filter(
-                  (statistic) => statistic !== accountValue
-                );
-                const positions = file.positions ?? [];
+          ) : (
+            <View style={styles.dashboard}>
+              <View style={styles.metricsGrid}>
+                {metrics.map((metric, index) => (
+                  <StatisticCard
+                    key={`${metric.label}-${index}`}
+                    statistic={metric}
+                  />
+                ))}
+              </View>
 
-                if (!statistics.length && !positions.length && file.hasOtherAssets !== false) {
-                  return (
-                    <ThemedView
-                      key={file.id}
-                      type="backgroundElement"
-                      style={styles.messageCard}>
-                      <ThemedText type="smallBold" numberOfLines={2}>
-                        {file.name}
-                      </ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {file.analysisError ??
-                          'Для этого файла нет сохраненных показателей. Импортируйте его повторно.'}
-                      </ThemedText>
-                    </ThemedView>
-                  );
-                }
+              <View style={styles.positionsSection}>
+                <View style={styles.positionsHeader}>
+                  <ThemedText type="smallBold">Активы</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {positions.length}
+                  </ThemedText>
+                </View>
 
-                return (
-                  <ThemedView key={file.id} type="backgroundElement" style={styles.reportCard}>
-                    <View style={styles.reportHeader}>
-                      <View style={styles.reportTitle}>
-                        <ThemedText type="smallBold" themeColor="textSecondary">
-                          XTB · ОТЧЕТ
-                        </ThemedText>
-                        <ThemedText type="smallBold" numberOfLines={2}>
-                          {file.name}
-                        </ThemedText>
-                        <ThemedText type="small" themeColor="textSecondary">
-                          Импортирован {formatDate(file.importedAt)}
-                        </ThemedText>
-                      </View>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {positions.length
-                          ? `${positions.length} ${positions.length === 1 ? 'позиция' : 'позиций'}`
-                          : 'Сводка'}
+                {positions.length ? (
+                  <ThemedView type="background" style={styles.assetList}>
+                    <View style={styles.assetColumnHeader}>
+                      <ThemedText
+                        type="small"
+                        themeColor="textSecondary"
+                        style={styles.assetColumnTitle}>
+                        Название
+                      </ThemedText>
+                      <ThemedText
+                        type="small"
+                        themeColor="textSecondary"
+                        style={styles.assetColumnLabel}>
+                        Стоимость
+                      </ThemedText>
+                      <ThemedText
+                        type="small"
+                        themeColor="textSecondary"
+                        style={[styles.assetColumnLabel, styles.volumeValue]}>
+                        Объем
                       </ThemedText>
                     </View>
-
-                    {accountValue ? (
-                      <ThemedView type="backgroundSelected" style={styles.accountValueCard}>
-                        <ThemedText type="small" themeColor="textSecondary">
-                          {accountValue.label}
-                        </ThemedText>
-                        <ThemedText type="subtitle" style={styles.accountValue}>
-                          {formatStatisticValue(accountValue.value, file.accountCurrency)}
-                        </ThemedText>
-                      </ThemedView>
-                    ) : null}
-
-                    {secondaryStatistics.length ? (
-                      <View style={styles.statisticsGrid}>
-                        {secondaryStatistics.map((statistic) => (
-                          <StatisticRow
-                            key={statistic.label}
-                            statistic={statistic}
-                            currency={file.accountCurrency}
-                          />
-                        ))}
-                      </View>
-                    ) : null}
-
-                    {positions.length ? (
-                      <View style={styles.positionsSection}>
-                        <View style={styles.positionsHeader}>
-                          <ThemedText type="smallBold">Позиции</ThemedText>
-                          <ThemedText type="small" themeColor="textSecondary">
-                            {positions.length}
-                          </ThemedText>
-                        </View>
-                        <View style={styles.positionList}>
-                          {positions.map((position, index) => (
-                            <PositionCard key={`${position.isin}-${index}`} position={position} />
-                          ))}
-                        </View>
-                      </View>
-                    ) : null}
-                    {file.hasOtherAssets === false ? (
-                      <ThemedText type="small" themeColor="textSecondary">
-                        Других активов нет
-                      </ThemedText>
-                    ) : null}
+                    {positions.map((position, index) => (
+                      <AssetRow
+                        key={`${position.isin}-${index}`}
+                        instrumentName={position.instrumentName}
+                        symbol={position.symbol}
+                        assetClass={position.assetClass}
+                        marketValue={position.marketValue}
+                        volume={position.volume}
+                      />
+                    ))}
                   </ThemedView>
-                );
-              })}
-            </View>
-          ) : (
-            <View style={styles.reportList}>
-              {files.map((file) => (
-                <ThemedView key={file.id} type="backgroundElement" style={styles.messageCard}>
-                  <ThemedText type="smallBold" numberOfLines={2}>
-                    {file.name}
-                  </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {file.analysisError ??
-                      (file.statistics === undefined
-                        ? 'Этот файл добавлен до анализа. Импортируйте его повторно.'
-                        : 'В отчете не найдены знакомые финансовые показатели. Проверьте таблицу PDF.')}
-                  </ThemedText>
-                </ThemedView>
-              ))}
+                ) : (
+                  <ThemedView type="backgroundElement" style={styles.messageCard}>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      В последнем отчете позиции не найдены.
+                    </ThemedText>
+                  </ThemedView>
+                )}
+              </View>
             </View>
           )}
         </ScrollView>
@@ -330,17 +309,17 @@ const styles = StyleSheet.create({
   content: {
     width: '100%',
     maxWidth: MaxContentWidth,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.five,
+    paddingHorizontal: Spacing.one,
+    paddingTop: Spacing.three,
     paddingBottom: BottomTabInset + Spacing.three,
   },
   header: {
-    gap: Spacing.two,
-    marginBottom: Spacing.five,
+    gap: Spacing.one,
+    marginBottom: Spacing.three,
   },
   title: {
-    fontSize: 40,
-    lineHeight: 46,
+    fontSize: 32,
+    lineHeight: 38,
   },
   loader: {
     marginTop: Spacing.five,
@@ -350,48 +329,23 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     borderRadius: Spacing.three,
   },
-  reportList: {
-    gap: Spacing.three,
+  dashboard: {
+    gap: Spacing.four,
   },
-  reportCard: {
-    gap: Spacing.three,
-    padding: Spacing.three,
-    borderRadius: Spacing.four,
-  },
-  reportHeader: {
+  metricsGrid: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
-  },
-  reportTitle: {
-    flex: 1,
-    gap: Spacing.one,
-  },
-  accountValueCard: {
-    gap: Spacing.one,
-    padding: Spacing.three,
-    borderRadius: Spacing.three,
-  },
-  accountValue: {
-    fontSize: 30,
-    lineHeight: 38,
-  },
-  statisticsGrid: {
+    flexWrap: 'wrap',
     gap: Spacing.two,
   },
   statisticCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
+    flexGrow: 1,
+    flexBasis: '47%',
+    minHeight: 64,
+    justifyContent: 'center',
+    gap: Spacing.one,
+    paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.two,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#88888844',
-  },
-  metricValue: {
-    flexShrink: 1,
-    textAlign: 'right',
+    borderRadius: Spacing.two,
   },
   positionsSection: {
     gap: Spacing.two,
@@ -401,37 +355,43 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  positionList: {
-    gap: Spacing.two,
-  },
-  positionCard: {
-    gap: Spacing.two,
-    padding: Spacing.three,
+  assetList: {
+    paddingHorizontal: Spacing.two,
     borderRadius: Spacing.three,
   },
-  positionHeading: {
+  assetColumnHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
+    alignItems: 'center',
+    gap: Spacing.one,
+    minHeight: 36,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#88888844',
   },
-  positionTitle: {
+  assetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    minHeight: 56,
+    paddingVertical: Spacing.two,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#88888844',
+  },
+  assetName: {
     flex: 1,
     gap: Spacing.one,
   },
-  assetClass: {
-    flexShrink: 1,
+  assetColumnTitle: {
+    flex: 1,
+  },
+  assetValue: {
+    width: 82,
+    alignItems: 'flex-end',
+  },
+  assetColumnLabel: {
+    width: 82,
     textAlign: 'right',
   },
-  positionValues: {
-    flexDirection: 'row',
-    gap: Spacing.three,
-  },
-  positionValue: {
-    flex: 1,
-    gap: Spacing.one,
-  },
   volumeValue: {
-    alignItems: 'flex-end',
+    width: 54,
   },
 });
