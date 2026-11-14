@@ -6,9 +6,8 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useSessionReports } from '@/hooks/use-session-reports';
 import type { ImportedReport, StatementPosition } from '@/utils/imported-files';
+import { getDynamicMetrics, type Metric } from '@/utils/portfolio-metrics';
 import { parseStatisticNumber } from '@/utils/statement-stats';
-
-type Metric = { label: string; value: string };
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
   '$': 'USD',
@@ -16,6 +15,21 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
   '£': 'GBP',
   '₽': 'RUB',
 };
+
+const BENCHMARK_METRICS = [
+  'Alpha',
+  'Beta',
+  'R²',
+  'Tracking Error',
+  'Information Ratio',
+  'Upside/Downside Capture',
+  'Active Share',
+  'Treynor',
+  'Jensen’s Alpha',
+  'Alpha Fama–French',
+  'Brinson Allocation',
+  'Brinson Selection',
+];
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value);
@@ -37,7 +51,40 @@ function getStatistic(report: ImportedReport, ...labels: string[]) {
   return report.statistics?.find((item) => labels.includes(item.label));
 }
 
-function getPositionAnalysis(positions: StatementPosition[], accountCurrency?: string) {
+function getStatisticMatching(report: ImportedReport, pattern: RegExp) {
+  return report.statistics?.find((item) => pattern.test(item.label));
+}
+
+function getSourceMetric(
+  report: ImportedReport,
+  label: string,
+  pattern: RegExp,
+  currency?: string,
+  percentage = false
+): Metric {
+  const statistic = getStatisticMatching(report, pattern);
+  if (!statistic) {
+    return { label, value: '— (нет данных в отчёте)' };
+  }
+
+  if (percentage) {
+    const value = parseStatisticNumber(statistic.value);
+    return {
+      label,
+      value:
+        value === null
+          ? statistic.value
+          : `${formatNumber(value)}${statistic.value.includes('%') ? '' : '%'}`,
+    };
+  }
+  return { label, value: formatStatisticValue(statistic.value, currency) };
+}
+
+function getPositionAnalysis(
+  positions: StatementPosition[],
+  accountCurrency?: string,
+  accountValue?: number | null
+) {
   const valuedPositions = positions.flatMap((position) => {
     const amount = parseStatisticNumber(position.marketValue);
     if (amount === null) {
@@ -62,6 +109,14 @@ function getPositionAnalysis(positions: StatementPosition[], accountCurrency?: s
       )
     : null;
   const currency = comparable ? valuedPositions[0].currency || undefined : undefined;
+  const portfolioValueForWeight =
+    comparable &&
+    typeof accountValue === 'number' &&
+    accountValue > 0 &&
+    currency === accountCurrency
+      ? accountValue
+      : null;
+  const weightTotal = portfolioValueForWeight ?? total;
   const assetClasses = new Set(positions.map((position) => position.assetClass).filter(Boolean));
   const classMetrics: Metric[] = [];
   const concentrationMetrics: Metric[] = [];
@@ -101,10 +156,14 @@ function getPositionAnalysis(positions: StatementPosition[], accountCurrency?: s
       const weights = valuedPositions
         .map((item) => Math.abs(item.amount) / grossValue)
         .sort((first, second) => second - first);
+      const shareDenominator = portfolioValueForWeight ?? grossValue;
+      const topWeights = valuedPositions
+        .map((item) => Math.abs(item.amount) / shareDenominator)
+        .sort((first, second) => second - first);
       const hhi = weights.reduce((sum, weight) => sum + weight ** 2, 0);
       concentrationMetrics.push(
         {
-          label: 'HHI',
+          label: 'HHI (по бумагам)',
           value: `${formatNumber(hhi * 10_000)} / 10 000`,
         },
         {
@@ -112,12 +171,39 @@ function getPositionAnalysis(positions: StatementPosition[], accountCurrency?: s
           value: formatNumber(1 / hhi),
         },
         {
-          label: 'Топ-3',
+          label:
+            portfolioValueForWeight !== null
+              ? 'Топ-3 (доля счёта)'
+              : 'Топ-3 (доля бумаг)',
           value: formatShare(
-            weights.slice(0, 3).reduce((sum, weight) => sum + weight, 0) * 100
+            topWeights.slice(0, 3).reduce((sum, weight) => sum + weight, 0) * 100
+          ),
+        },
+        {
+          label:
+            portfolioValueForWeight !== null
+              ? 'Топ-1 (доля счёта)'
+              : 'Топ-1 (доля бумаг)',
+          value: formatShare((topWeights[0] ?? 0) * 100),
+        },
+        {
+          label:
+            portfolioValueForWeight !== null
+              ? 'Топ-5 (доля счёта)'
+              : 'Топ-5 (доля бумаг)',
+          value: formatShare(
+            topWeights.slice(0, 5).reduce((sum, weight) => sum + weight, 0) * 100
           ),
         }
       );
+      for (const item of valuedPositions) {
+        concentrationMetrics.push({
+          label: `Вес ${item.position.symbol} (${
+            portfolioValueForWeight !== null ? 'счёта' : 'бумаг'
+          })`,
+          value: formatShare((Math.abs(item.amount) / shareDenominator) * 100),
+        });
+      }
     }
   }
 
@@ -126,6 +212,8 @@ function getPositionAnalysis(positions: StatementPosition[], accountCurrency?: s
     unvaluedCount: positions.length - valuedPositions.length,
     assetClassCount: assetClasses.size,
     total,
+    weightTotal,
+    weightBasis: portfolioValueForWeight !== null ? 'доля счёта' : 'доля бумаг',
     currency,
     largest,
     classMetrics,
@@ -196,7 +284,11 @@ export default function HomeScreen() {
     const previousAccountValueNumber = previousAccountValue
       ? parseStatisticNumber(previousAccountValue.value)
       : null;
-    const positionAnalysis = getPositionAnalysis(positions, latestReport.accountCurrency);
+    const positionAnalysis = getPositionAnalysis(
+      positions,
+      latestReport.accountCurrency,
+      accountValueNumber
+    );
     const accountMetrics: Metric[] = [];
     const resultMetrics: Metric[] = [];
     const positionMetrics: Metric[] = [];
@@ -289,14 +381,14 @@ export default function HomeScreen() {
           value: '— (разные валюты)',
         });
       }
-      if (positionAnalysis.largest && positionAnalysis.total) {
+      if (positionAnalysis.largest && positionAnalysis.weightTotal) {
         positionMetrics.push({
-          label: `Крупнейшая (${positionAnalysis.largest.position.symbol})`,
+          label: `Крупнейшая (${positionAnalysis.largest.position.symbol}, ${positionAnalysis.weightBasis})`,
           value: `${formatMoney(
             positionAnalysis.largest.amount,
             positionAnalysis.currency
           )} · ${formatShare(
-            (positionAnalysis.largest.amount / positionAnalysis.total) * 100
+            (positionAnalysis.largest.amount / positionAnalysis.weightTotal) * 100
           )}`,
         });
       }
@@ -318,19 +410,160 @@ export default function HomeScreen() {
         value: formatStatisticValue(statistic.value, latestReport.accountCurrency),
       }));
 
+    const fee = getStatisticMatching(latestReport, /комисси|commission|^fees?$/i);
+    const tax = getStatisticMatching(latestReport, /налог|^tax(?:es)?$/i);
+    const feeAmount = fee ? parseStatisticNumber(fee.value) : null;
+    const taxAmount = tax ? parseStatisticNumber(tax.value) : null;
+    const totalCosts =
+      feeAmount === null && taxAmount === null
+        ? null
+        : Math.abs(feeAmount ?? 0) + Math.abs(taxAmount ?? 0);
+    const feeTaxDrag =
+      totalCosts !== null
+        ? `${formatMoney(totalCosts, latestReport.accountCurrency)}${
+            accountValueNumber !== null && accountValueNumber > 0
+              ? ` · ${formatShare((totalCosts / accountValueNumber) * 100)} от стоимости счёта`
+              : ''
+          }`
+        : '— (нет данных о комиссиях/налогах)';
+    const dryMetrics: Metric[] = [
+      getSourceMetric(
+        latestReport,
+        'Unrealized PnL (абсолютный)',
+        /^(?!.*(?:%|процент)).*(?:unrealized|unrealised|нереализован|открыт.*(?:p.?l|прибыл))/i,
+        latestReport.accountCurrency
+      ),
+      getSourceMetric(
+        latestReport,
+        'Unrealized PnL (%)',
+        /(?:(?:unrealized|unrealised|нереализован|открыт.*(?:p.?l|прибыл)).*(?:%|процент)|(?:%|процент).*(?:unrealized|unrealised|нереализован))/i,
+        undefined,
+        true
+      ),
+      getSourceMetric(
+        latestReport,
+        'Realized PnL (абсолютный)',
+        /^(?!.*(?:%|процент)).*(?:realized|realised|реализован|закрыт.*(?:p.?l|прибыл))/i,
+        latestReport.accountCurrency
+      ),
+      getSourceMetric(
+        latestReport,
+        'Realized PnL (%)',
+        /(?:(?:realized|realised|реализован|закрыт.*(?:p.?l|прибыл)).*(?:%|процент)|(?:%|процент).*(?:realized|realised|реализован))/i,
+        undefined,
+        true
+      ),
+      getSourceMetric(
+        latestReport,
+        'Общий доход',
+        /общ.*доход|total income/i,
+        latestReport.accountCurrency
+      ),
+      {
+        label: 'Contribution to Return',
+        value: '— (нет истории доходности по отдельным позициям)',
+      },
+      getSourceMetric(
+        latestReport,
+        'Yield on Cost',
+        /yield on cost|доходность.*(?:цен|стоимост).*покуп|дивидендн.*цен.*приобрет/i,
+        undefined,
+        true
+      ),
+      getSourceMetric(
+        latestReport,
+        'Текущая дивидендная доходность',
+        /current.*(?:dividend )?yield|текущ.*дивидендн.*доходност/i,
+        undefined,
+        true
+      ),
+      {
+        label: 'Секторная экспозиция',
+        value: '— (сектор отсутствует в данных позиций)',
+      },
+      {
+        label: 'Страновая экспозиция',
+        value: '— (страна эмитента отсутствует в данных)',
+      },
+      {
+        label: 'Валютная экспозиция',
+        value: '— (валюта инструмента/курс не указаны)',
+      },
+      {
+        label: 'Win Rate',
+        value: '— (нет журнала закрытых сделок)',
+      },
+      {
+        label: 'Profit Factor',
+        value: '— (нет журнала закрытых сделок)',
+      },
+      {
+        label: 'Payoff Ratio',
+        value: '— (нет результатов отдельных сделок)',
+      },
+      {
+        label: 'Expectancy',
+        value: '— (нет результатов отдельных сделок)',
+      },
+      {
+        label: 'Turnover Rate',
+        value: '— (нет оборота покупок/продаж)',
+      },
+      { label: 'Fee / Tax Drag', value: feeTaxDrag },
+      getSourceMetric(
+        latestReport,
+        'Средневзвешенный P/E',
+        /(?:средневзвеш|weighted).*(?:p\s*\/?\s*e|price.?earnings)/i
+      ),
+      getSourceMetric(
+        latestReport,
+        'Средневзвешенный P/S',
+        /(?:средневзвеш|weighted).*(?:p\s*\/?\s*s|price.?sales)/i
+      ),
+      getSourceMetric(
+        latestReport,
+        'Средневзвешенный P/B',
+        /(?:средневзвеш|weighted).*(?:p\s*\/?\s*b|price.?book)/i
+      ),
+      getSourceMetric(
+        latestReport,
+        'Средневзвешенный EV/EBITDA',
+        /(?:средневзвеш|weighted).*ev\s*\/?\s*ebitda/i
+      ),
+      getSourceMetric(
+        latestReport,
+        'Средневзвешенный ROE',
+        /(?:средневзвеш|weighted).*roe/i,
+        undefined,
+        true
+      ),
+      getSourceMetric(
+        latestReport,
+        'Средневзвешенный Debt/Equity',
+        /(?:средневзвеш|weighted).*(?:debt\s*\/?\s*equity|долг.*капитал)/i
+      ),
+    ];
+
     metricGroups.push(
       accountMetrics,
       resultMetrics,
       positionMetrics,
       positionAnalysis.classMetrics,
       positionAnalysis.concentrationMetrics,
-      additionalMetrics
+      additionalMetrics,
+      dryMetrics
     );
   }
-  const metricLine = metricGroups
-    .flatMap((metrics) => metrics)
-    .map((metric) => `${metric.label} - ${metric.value}`)
-    .join(', ');
+  const metrics = [
+    ...metricGroups.flatMap((group) => group),
+    ...(latestReport
+      ? getDynamicMetrics(sortedReports, latestReport.accountCurrency)
+      : []),
+    ...BENCHMARK_METRICS.map((label) => ({
+      label,
+      value: '— (нет данных бенчмарка)',
+    })),
+  ];
 
   return (
     <ThemedView style={styles.screen}>
@@ -370,7 +603,18 @@ export default function HomeScreen() {
                   style={styles.sectionTitle}>
                   ПОКАЗАТЕЛИ
                 </ThemedText>
-                <ThemedText type="small">{metricLine}</ThemedText>
+                <View style={styles.metricList}>
+                  {metrics.map((metric, index) => (
+                    <View key={`${metric.label}-${index}`} style={styles.metricRow}>
+                      <ThemedText type="small" style={styles.metricLabel}>
+                        {metric.label}
+                      </ThemedText>
+                      <ThemedText type="small" style={styles.metricValue}>
+                        {metric.value}
+                      </ThemedText>
+                    </View>
+                  ))}
+                </View>
               </View>
             </View>
           )}
@@ -421,5 +665,20 @@ const styles = StyleSheet.create({
   sectionTitle: {
     letterSpacing: 1.2,
     marginBottom: Spacing.two,
+  },
+  metricList: {
+    gap: Spacing.one,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+  },
+  metricLabel: {
+    flex: 1,
+  },
+  metricValue: {
+    flex: 1,
+    textAlign: 'right',
   },
 });

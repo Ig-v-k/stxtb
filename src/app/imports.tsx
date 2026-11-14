@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useSessionReports } from '@/hooks/use-session-reports';
 import { useTheme } from '@/hooks/use-theme';
 import { sanitizeImportedFileName } from '@/utils/imported-files';
@@ -612,6 +612,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two,
     borderWidth: 1,
     borderRadius: Spacing.two,
+    fontFamily: Fonts.mono,
   },
   periodActions: {
     flexDirection: 'row',
@@ -645,6 +646,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     borderWidth: 1,
     borderRadius: Spacing.two,
+    fontFamily: Fonts.mono,
   },
   passwordActions: {
     flexDirection: 'row',

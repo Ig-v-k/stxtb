@@ -20,6 +20,8 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
 
 Import PDF statements from the **Files** tab. On iOS and Android development builds, the app extracts common balance, equity, profit/loss, deposit, withdrawal, fee, dividend, and swap figures and shows them on the home screen. A PDF password is requested in-app when needed and is not saved. PDF text extraction requires a development build; Expo Go and web builds show an availability message.
 
+The home screen groups metrics into a report-only snapshot, a historical analysis, and market comparisons. Position weights use account value when currencies are comparable; concentration and HHI are calculated from the reported positions. Historical returns use consecutive dated account-value snapshots and reported deposits/withdrawals. With aggregate cash flows only, TWR uses the Modified Dietz midpoint assumption and XIRR dates flows at the report-period midpoint. Volatility and drawdown therefore reflect report frequency, and historical VaR/CVaR are shown only with at least 20 return periods. Metrics requiring trade-level cost basis, per-position history, issuer data, fundamentals, or market/benchmark data remain unavailable rather than being inferred.
+
 In the output, you'll find options to open the app in a
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)
