@@ -45,6 +45,7 @@ const SHORT_METRIC_LABELS: Record<string, string> = {
   'Комиссии': 'Комис.',
   'Изменение счёта': 'Δ счёта',
   'Стоимость бумаг': 'Бумаги',
+  'Доля бумаг в счёте': 'Бумаги / счёт',
   'Оценено': 'Оцен.',
   'Эфф. позиций': 'Эфф. поз.',
   'Топ-3 (доля счёта)': 'Топ-3 (сч.)',
@@ -436,6 +437,18 @@ export default function HomeScreen() {
           label: 'Стоимость бумаг',
           value: formatMoney(positionAnalysis.total, positionAnalysis.currency),
         });
+        if (
+          positionAnalysis.total > 0 &&
+          accountValueNumber !== null &&
+          accountValueNumber > 0 &&
+          latestReport.accountCurrency &&
+          positionAnalysis.currency === latestReport.accountCurrency
+        ) {
+          positionMetrics.push({
+            label: 'Доля бумаг в счёте',
+            value: formatShare((positionAnalysis.total / accountValueNumber) * 100),
+          });
+        }
       } else if (positionAnalysis.valuedCount > 0) {
         positionMetrics.push({
           label: 'Стоимость бумаг',
