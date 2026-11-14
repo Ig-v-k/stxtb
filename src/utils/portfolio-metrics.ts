@@ -19,7 +19,7 @@ type ReturnPeriod = {
 };
 
 const DAY_MS = 86_400_000;
-const INSUFFICIENT_HISTORY = '— (нужны датированные отчёты)';
+const INSUFFICIENT_HISTORY = 'Н/Д';
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value);

@@ -64,7 +64,7 @@ function getSourceMetric(
 ): Metric {
   const statistic = getStatisticMatching(report, pattern);
   if (!statistic) {
-    return { label, value: '— (нет данных в отчёте)' };
+    return { label, value: 'Н/Д' };
   }
 
   if (percentage) {
@@ -425,7 +425,7 @@ export default function HomeScreen() {
               ? ` · ${formatShare((totalCosts / accountValueNumber) * 100)} от стоимости счёта`
               : ''
           }`
-        : '— (нет данных о комиссиях/налогах)';
+        : 'Н/Д';
     const dryMetrics: Metric[] = [
       getSourceMetric(
         latestReport,
@@ -461,7 +461,7 @@ export default function HomeScreen() {
       ),
       {
         label: 'Contribution to Return',
-        value: '— (нет истории доходности по отдельным позициям)',
+        value: 'Н/Д',
       },
       getSourceMetric(
         latestReport,
@@ -479,35 +479,35 @@ export default function HomeScreen() {
       ),
       {
         label: 'Секторная экспозиция',
-        value: '— (сектор отсутствует в данных позиций)',
+        value: 'Н/Д',
       },
       {
         label: 'Страновая экспозиция',
-        value: '— (страна эмитента отсутствует в данных)',
+        value: 'Н/Д',
       },
       {
         label: 'Валютная экспозиция',
-        value: '— (валюта инструмента/курс не указаны)',
+        value: 'Н/Д',
       },
       {
         label: 'Win Rate',
-        value: '— (нет журнала закрытых сделок)',
+        value: 'Н/Д',
       },
       {
         label: 'Profit Factor',
-        value: '— (нет журнала закрытых сделок)',
+        value: 'Н/Д',
       },
       {
         label: 'Payoff Ratio',
-        value: '— (нет результатов отдельных сделок)',
+        value: 'Н/Д',
       },
       {
         label: 'Expectancy',
-        value: '— (нет результатов отдельных сделок)',
+        value: 'Н/Д',
       },
       {
         label: 'Turnover Rate',
-        value: '— (нет оборота покупок/продаж)',
+        value: 'Н/Д',
       },
       { label: 'Fee / Tax Drag', value: feeTaxDrag },
       getSourceMetric(
@@ -561,7 +561,7 @@ export default function HomeScreen() {
       : []),
     ...BENCHMARK_METRICS.map((label) => ({
       label,
-      value: '— (нет данных бенчмарка)',
+      value: 'Н/Д',
     })),
   ];
 
