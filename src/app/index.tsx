@@ -31,6 +31,67 @@ const BENCHMARK_METRICS = [
   'Brinson Selection',
 ];
 
+const SHORT_METRIC_LABELS: Record<string, string> = {
+  'Стоимость счета': 'Счёт',
+  'Стоимость счёта': 'Счёт',
+  'Account Value': 'Счёт',
+  'Net Asset Value': 'Счёт',
+  Equity: 'Счёт',
+  'Свободные средства': 'Св. средства',
+  'Обеспечение': 'Обесп.',
+  'Прибыль / убыток': 'P&L',
+  'Дивиденды': 'Див.',
+  'Пополнения': 'Пополн.',
+  'Комиссии': 'Комис.',
+  'Изменение счёта': 'Δ счёта',
+  'Стоимость бумаг': 'Бумаги',
+  'Оценено': 'Оцен.',
+  'Эфф. позиций': 'Эфф. поз.',
+  'Топ-3 (доля счёта)': 'Топ-3 (сч.)',
+  'Топ-3 (доля бумаг)': 'Топ-3 (поз.)',
+  'Топ-1 (доля счёта)': 'Топ-1 (сч.)',
+  'Топ-1 (доля бумаг)': 'Топ-1 (поз.)',
+  'Топ-5 (доля счёта)': 'Топ-5 (сч.)',
+  'Топ-5 (доля бумаг)': 'Топ-5 (поз.)',
+  'Без оценки': 'Без цены',
+  'Периодов с денежными потоками': 'Периодов',
+  'Cumulative Return (TWR)': 'TWR (итого)',
+  'Annualized Return': 'Год. доходность',
+  'Стандартное отклонение (год.)': 'σ (год.)',
+  'Downside Deviation (год.)': 'Downside Dev. (год.)',
+  'Max Drawdown': 'Max DD',
+  'Drawdown Duration': 'DD Duration',
+  'Sharpe (безрисковая ставка 0%)': 'Sharpe (Rf=0%)',
+  'Sortino (целевая доходность 0%)': 'Sortino (0%)',
+  'Omega (порог 0%)': 'Omega (0%)',
+  'Снимков портфеля': 'Снимки',
+  'Tracking Error': 'TE',
+  'Information Ratio': 'IR',
+  'Upside/Downside Capture': 'Up/Down Capture',
+  'Jensen’s Alpha': 'Jensen α',
+  'Alpha Fama–French': 'F-F α',
+  'Brinson Allocation': 'Brinson Alloc.',
+  'Brinson Selection': 'Brinson Sel.',
+  'Contribution to Return': 'CTR',
+  'Yield on Cost': 'YoC',
+  'Текущая дивидендная доходность': 'Тек. див. доход.',
+  'Секторная экспозиция': 'Сектор',
+  'Страновая экспозиция': 'Страна',
+  'Валютная экспозиция': 'Валюта',
+  'Win Rate': 'Win %',
+  'Profit Factor': 'PF',
+  'Payoff Ratio': 'Payoff',
+  'Expectancy': 'Expect.',
+  'Turnover Rate': 'Turnover',
+  'Fee / Tax Drag': 'Fee/Tax',
+  'Средневзвешенный P/E': 'Взвеш. P/E',
+  'Средневзвешенный P/S': 'Взвеш. P/S',
+  'Средневзвешенный P/B': 'Взвеш. P/B',
+  'Средневзвешенный EV/EBITDA': 'Взвеш. EV/EBITDA',
+  'Средневзвешенный ROE': 'Взвеш. ROE',
+  'Средневзвешенный Debt/Equity': 'Взвеш. D/E',
+};
+
 function formatNumber(value: number) {
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value);
 }
@@ -163,7 +224,7 @@ function getPositionAnalysis(
       const hhi = weights.reduce((sum, weight) => sum + weight ** 2, 0);
       concentrationMetrics.push(
         {
-          label: 'HHI (по бумагам)',
+          label: 'HHI',
           value: `${formatNumber(hhi * 10_000)} / 10 000`,
         },
         {
@@ -173,8 +234,8 @@ function getPositionAnalysis(
         {
           label:
             portfolioValueForWeight !== null
-              ? 'Топ-3 (доля счёта)'
-              : 'Топ-3 (доля бумаг)',
+                  ? 'Топ-3 (доля счёта)'
+                  : 'Топ-3 (доля бумаг)',
           value: formatShare(
             topWeights.slice(0, 3).reduce((sum, weight) => sum + weight, 0) * 100
           ),
@@ -198,8 +259,8 @@ function getPositionAnalysis(
       );
       for (const item of valuedPositions) {
         concentrationMetrics.push({
-          label: `Вес ${item.position.symbol} (${
-            portfolioValueForWeight !== null ? 'счёта' : 'бумаг'
+          label: `Доля ${item.position.symbol} (${
+            portfolioValueForWeight !== null ? 'сч.' : 'поз.'
           })`,
           value: formatShare((Math.abs(item.amount) / shareDenominator) * 100),
         });
@@ -213,7 +274,7 @@ function getPositionAnalysis(
     assetClassCount: assetClasses.size,
     total,
     weightTotal,
-    weightBasis: portfolioValueForWeight !== null ? 'доля счёта' : 'доля бумаг',
+    weightBasis: portfolioValueForWeight !== null ? 'сч.' : 'поз.',
     currency,
     largest,
     classMetrics,
@@ -314,7 +375,7 @@ export default function HomeScreen() {
       accountValueNumber !== 0
     ) {
       accountMetrics.push({
-        label: 'Свободные средства, %',
+        label: 'Свободные средства',
         value: formatShare((freeFundsNumber / accountValueNumber) * 100),
       });
     }
@@ -324,7 +385,7 @@ export default function HomeScreen() {
       accountValueNumber > 0
     ) {
       accountMetrics.push({
-        label: 'Обеспечение, % счёта',
+        label: 'Обеспечение',
         value: formatShare((collateralNumber / accountValueNumber) * 100),
       });
     }
@@ -383,7 +444,7 @@ export default function HomeScreen() {
       }
       if (positionAnalysis.largest && positionAnalysis.weightTotal) {
         positionMetrics.push({
-          label: `Крупнейшая (${positionAnalysis.largest.position.symbol}, ${positionAnalysis.weightBasis})`,
+          label: `Макс. ${positionAnalysis.largest.position.symbol} (${positionAnalysis.weightBasis})`,
           value: `${formatMoney(
             positionAnalysis.largest.amount,
             positionAnalysis.currency
@@ -429,7 +490,7 @@ export default function HomeScreen() {
     const dryMetrics: Metric[] = [
       getSourceMetric(
         latestReport,
-        'Unrealized PnL (абсолютный)',
+        'Unrealized PnL',
         /^(?!.*(?:%|процент)).*(?:unrealized|unrealised|нереализован|открыт.*(?:p.?l|прибыл))/i,
         latestReport.accountCurrency
       ),
@@ -442,7 +503,7 @@ export default function HomeScreen() {
       ),
       getSourceMetric(
         latestReport,
-        'Realized PnL (абсолютный)',
+        'Realized PnL',
         /^(?!.*(?:%|процент)).*(?:realized|realised|реализован|закрыт.*(?:p.?l|прибыл))/i,
         latestReport.accountCurrency
       ),
@@ -607,7 +668,7 @@ export default function HomeScreen() {
                   {metrics.map((metric, index) => (
                     <View key={`${metric.label}-${index}`} style={styles.metricRow}>
                       <ThemedText type="small" style={styles.metricLabel}>
-                        {metric.label}
+                        {SHORT_METRIC_LABELS[metric.label] ?? metric.label}
                       </ThemedText>
                       <ThemedText type="small" style={styles.metricValue}>
                         {metric.value}
