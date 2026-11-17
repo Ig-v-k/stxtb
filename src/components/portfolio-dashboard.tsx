@@ -64,7 +64,7 @@ export function PortfolioDashboard({
                     ПОДРОБНЫЕ ПОКАЗАТЕЛИ
                   </ThemedText>
                   <ThemedText type="small" themeColor="textSecondary">
-                    Всего доступно метрик: {availableMetricCount}
+                    Всего доступно метрик: {availableMetricCount.toFixed(2).replace('.', ',')}
                   </ThemedText>
                   <MetricList metrics={otherMetrics} onSelect={onSelectMetric} />
                 </View>

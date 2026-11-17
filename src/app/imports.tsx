@@ -28,12 +28,12 @@ function formatFileSize(size: number | null) {
     return 'Размер не указан';
   }
   if (size < 1024) {
-    return `${size} Б`;
+    return `${size.toFixed(2).replace('.', ',')} Б`;
   }
   if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} КБ`;
+    return `${(size / 1024).toFixed(2).replace('.', ',')} КБ`;
   }
-  return `${(size / (1024 * 1024)).toFixed(1)} МБ`;
+  return `${(size / (1024 * 1024)).toFixed(2).replace('.', ',')} МБ`;
 }
 
 function formatPeriodDate(value: string) {
@@ -264,7 +264,7 @@ export default function ImportsScreen() {
               Отчеты в этой сессии
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              {reports.length} {reports.length === 1 ? 'отчет' : 'отчетов'}
+              {reports.length.toFixed(2).replace('.', ',')} {reports.length === 1 ? 'отчет' : 'отчетов'}
             </ThemedText>
           </View>
           {reports.length > 0 && (

@@ -154,6 +154,27 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
   '€': 'EUR',
   '£': 'GBP',
   '₽': 'RUB',
+  '¥': 'JPY',
+  'zł': 'PLN',
+  'Kč': 'CZK',
+  'Ft': 'HUF',
+  '₮': 'USDT',
+};
+
+const CURRENCY_DISPLAY_SYMBOLS: Record<string, string> = {
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+  RUB: '₽',
+  PLN: 'zł',
+  CZK: 'Kč',
+  HUF: 'Ft',
+  CHF: 'CHF',
+  JPY: '¥',
+  CAD: 'CA$',
+  AUD: 'A$',
+  HKD: 'HK$',
+  USDT: '₮',
 };
 
 export function formatReportPeriod(report: ImportedReport) {
@@ -167,11 +188,41 @@ export function formatReportPeriod(report: ImportedReport) {
 }
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value);
+  return value.toFixed(2).replace('.', ',');
 }
 
 function formatMoney(value: number, currency?: string) {
-  return `${formatNumber(value)}${currency ? ` (${currency})` : ''}`;
+  const sign = value < 0 ? '-' : '';
+  const symbol = currency ? CURRENCY_DISPLAY_SYMBOLS[currency.toUpperCase()] ?? currency : '';
+  return `${sign}${symbol}${formatNumber(Math.abs(value))}`;
+}
+
+function formatCurrencyCode(value: string) {
+  return value
+    .replace(/\bUSD\b/gi, '$')
+    .replace(/\bEUR\b/gi, '€')
+    .replace(/\bGBP\b/gi, '£')
+    .replace(/\bRUB\b/gi, '₽')
+    .replace(/\bPLN\b/gi, 'zł')
+    .replace(/\bCZK\b/gi, 'Kč')
+    .replace(/\bHUF\b/gi, 'Ft')
+    .replace(/\bCHF\b/gi, 'CHF')
+    .replace(/\bJPY\b/gi, '¥')
+    .replace(/\bCAD\b/gi, 'CA$')
+    .replace(/\bAUD\b/gi, 'A$')
+    .replace(/\bHKD\b/gi, 'HK$')
+    .replace(/\bUSDT\b/gi, '₮');
+}
+
+function getDisplayCurrency(value: string, fallback?: string) {
+  const code = /\b(USD|EUR|GBP|RUB|PLN|CZK|HUF|CHF|JPY|CAD|AUD|HKD|USDT)\b/i.exec(value)?.[1];
+  if (code) return CURRENCY_DISPLAY_SYMBOLS[code.toUpperCase()] ?? code;
+  const symbol = /CA\$|A\$|HK\$|[$€£₽¥]|zł|Kč|Ft|₮|CHF/i.exec(value)?.[0];
+  if (symbol) {
+    const symbolCode = CURRENCY_SYMBOLS[symbol];
+    return symbolCode ? CURRENCY_DISPLAY_SYMBOLS[symbolCode] : symbol;
+  }
+  return fallback ? CURRENCY_DISPLAY_SYMBOLS[fallback.toUpperCase()] ?? fallback : '';
 }
 
 function formatPercent(value: number) {
@@ -191,14 +242,31 @@ function getStatisticMatching(report: ImportedReport, pattern: RegExp) {
 }
 
 function formatStatisticValue(value: string, currency?: string, label?: string) {
-  const hasCurrency = /\b(?:USD|EUR|GBP|RUB|PLN|CZK|HUF|CHF|JPY|CAD|AUD|HKD|USDT)\b|[$€£₽]/i.test(value);
+  const hasCurrency = /\b(?:USD|EUR|GBP|RUB|PLN|CZK|HUF|CHF|JPY|CAD|AUD|HKD|USDT)\b|CA\$|A\$|HK\$|[$€£₽¥]|zł|Kč|Ft|₮/i.test(value);
   const hasPercent = /%|percent|процент/i.test(value);
   const numericValue = parseStatisticNumber(value);
   const isPercentage = /%|percent|процент|доходност|return|volatility|deviation|drawdown|capture|alpha/i.test(label ?? '');
   const isMonetary = /p.?n.?l|profit|loss|income|dividend|deposit|withdraw|cash|balance|equity|account value|net asset value|collateral|margin|fee|commission|swap|turnover|volume|cost|expectancy|price|amount|tax|стоимост|баланс|прибыл|убыт|доход|дивиденд|пополн|вывод|средств|обеспеч|комис|своп|оборот|объем|налог/i.test(label ?? '');
-  if (isPercentage && numericValue !== null && !hasPercent) return `${formatNumber(numericValue)}%`;
-  if (numericValue === null || hasCurrency || hasPercent || isPercentage || !isMonetary || !currency) return value;
-  return `${value} (${currency})`;
+  const isProfitLoss = /p.?n.?l|profit|loss|результат|прибы|убыток|изменени/i.test(label ?? '');
+  if (isPercentage && numericValue !== null && !hasPercent) {
+    const sign = isProfitLoss && numericValue > 0 ? '+' : '';
+    return `${sign}${formatNumber(numericValue)}%`;
+  }
+  if (numericValue === null) return formatCurrencyCode(value);
+  if (!hasPercent && !isPercentage && (isMonetary || hasCurrency)) {
+    const symbol = getDisplayCurrency(value, currency);
+    if (symbol) {
+      const sign = numericValue < 0 ? '-' : isProfitLoss && numericValue > 0 ? '+' : '';
+      return `${sign}${symbol}${formatNumber(Math.abs(numericValue))}`;
+    }
+  }
+
+  const numericToken = /[-+]?\d[\d\u00a0 ,.'’]*/.exec(value);
+  if (!numericToken || numericToken.index === undefined) return formatCurrencyCode(value);
+  const trailingWhitespace = /\s+$/.exec(numericToken[0])?.[0] ?? '';
+  const tokenEnd = numericToken.index + numericToken[0].length - trailingWhitespace.length;
+  const sign = isProfitLoss && numericValue > 0 ? '+' : '';
+  return `${value.slice(0, numericToken.index)}${sign}${formatNumber(numericValue)}${trailingWhitespace}${value.slice(tokenEnd)}`;
 }
 
 function getSourceMetric(report: ImportedReport, label: string, pattern: RegExp, currency?: string, percentage = false): Metric {
@@ -206,7 +274,9 @@ function getSourceMetric(report: ImportedReport, label: string, pattern: RegExp,
   if (!statistic) return { label, value: '— (нет данных в отчёте)' };
   if (percentage) {
     const value = parseStatisticNumber(statistic.value);
-    return { label, value: value === null ? statistic.value : `${formatNumber(value)}${statistic.value.includes('%') ? '' : '%'}` };
+    const isProfitLoss = /p.?n.?l|profit|loss|результат|прибы|убыток/i.test(label);
+    const sign = isProfitLoss && value !== null && value > 0 ? '+' : '';
+    return { label, value: value === null ? statistic.value : `${sign}${formatNumber(value)}${statistic.value.includes('%') ? '' : '%'}` };
   }
   return { label, value: formatStatisticValue(statistic.value, currency, statistic.label) };
 }
@@ -245,7 +315,7 @@ function getPositionAnalysis(positions: StatementPosition[], accountCurrency?: s
     }
     for (const [label, value] of totalsByClass) {
       classMetrics.push({
-        label: `${label} (${value.count})`,
+        label: `${label} (${formatNumber(value.count)})`,
         value: `${formatMoney(value.amount, currency)} · ${total === 0 ? '—' : formatShare((value.amount / total) * 100)}`,
       });
     }
@@ -253,7 +323,7 @@ function getPositionAnalysis(positions: StatementPosition[], accountCurrency?: s
   if (positions.length > 0) {
     concentrationMetrics.push({
       label: 'Оценено',
-      value: `${valuedPositions.length}/${positions.length} · ${formatShare((valuedPositions.length / positions.length) * 100)}`,
+      value: `${formatNumber(valuedPositions.length)}/${formatNumber(positions.length)} · ${formatShare((valuedPositions.length / positions.length) * 100)}`,
     });
   }
   if (comparable && valuedPositions.length === positions.length) {
@@ -264,7 +334,7 @@ function getPositionAnalysis(positions: StatementPosition[], accountCurrency?: s
       const topWeights = valuedPositions.map((item) => Math.abs(item.amount) / shareDenominator).sort((first, second) => second - first);
       const hhi = weights.reduce((sum, weight) => sum + weight ** 2, 0);
       concentrationMetrics.push(
-        { label: 'HHI', value: `${formatNumber(hhi * 10_000)} / 10 000` },
+        { label: 'HHI', value: `${formatNumber(hhi * 10_000)} / ${formatNumber(10_000)}` },
         { label: 'Эфф. позиций', value: formatNumber(1 / hhi) },
         { label: portfolioValueForWeight !== null ? 'Топ-3 (доля счёта)' : 'Топ-3 (доля бумаг)', value: formatShare(topWeights.slice(0, 3).reduce((sum, weight) => sum + weight, 0) * 100) },
         { label: portfolioValueForWeight !== null ? 'Топ-1 (доля счёта)' : 'Топ-1 (доля бумаг)', value: formatShare((topWeights[0] ?? 0) * 100) },

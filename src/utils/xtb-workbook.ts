@@ -106,11 +106,28 @@ function findPeriod(sheets: Row[][]): StatementPeriod | null {
 }
 
 function formatAmount(value: number) {
-  return value.toFixed(2);
+  return value.toFixed(2).replace('.', ',');
 }
 
-function formatMoney(value: number, currency?: string) {
-  return `${formatAmount(value)}${currency ? ` ${currency}` : ''}`;
+function formatMoney(value: number, currency?: string, signed = false) {
+  const symbols: Record<string, string> = {
+    USD: '$',
+    EUR: '€',
+    GBP: '£',
+    RUB: '₽',
+    PLN: 'zł',
+    CZK: 'Kč',
+    HUF: 'Ft',
+    CHF: 'CHF',
+    JPY: '¥',
+    CAD: 'CA$',
+    AUD: 'A$',
+    HKD: 'HK$',
+    USDT: '₮',
+  };
+  const symbol = currency ? symbols[currency.toUpperCase()] ?? currency : '';
+  const sign = value < 0 ? '-' : signed && value > 0 ? '+' : '';
+  return `${sign}${symbol}${Math.abs(value).toFixed(2).replace('.', ',')}`;
 }
 
 function addStatistic(statistics: StatementStatistic[], label: string, value: string) {
@@ -188,7 +205,7 @@ function addTradeMetrics(
   addStatistic(statistics, 'Win Rate', `${formatAmount(winRate)}%`);
   addStatistic(statistics, 'Profit Factor', profitFactor);
   addStatistic(statistics, 'Payoff Ratio', payoffRatio);
-  addStatistic(statistics, 'Expectancy', formatMoney(expectancy, currency));
+  addStatistic(statistics, 'Expectancy', formatMoney(expectancy, currency, true));
 
   const purchaseValue = trades.reduce(
     (sum, trade) => sum + (trade.purchaseValue ?? 0),
@@ -338,7 +355,7 @@ export function parseXtbWorkbook(
       );
     }
     if (openProfit !== undefined) {
-      addStatistic(statistics, 'Unrealized PnL', formatMoney(openProfit, currency));
+      addStatistic(statistics, 'Unrealized PnL', formatMoney(openProfit, currency, true));
       const costBasis = openValue === undefined ? null : openValue - openProfit;
       addStatistic(
         statistics,
@@ -357,9 +374,9 @@ export function parseXtbWorkbook(
     addStatistic(
       statistics,
       'Realized PnL',
-      formatMoney(realizedProfit, accountCurrency)
+      formatMoney(realizedProfit, accountCurrency, true)
     );
-    addStatistic(statistics, 'Прибыль / убыток', formatMoney(realizedProfit, accountCurrency));
+    addStatistic(statistics, 'Прибыль / убыток', formatMoney(realizedProfit, accountCurrency, true));
   }
 
   if (cashTable) {

@@ -23,11 +23,31 @@ const DAY_MS = 86_400_000;
 const INSUFFICIENT_HISTORY = 'Н/Д';
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value);
+  return value.toFixed(2).replace('.', ',');
 }
 
 function formatPercent(value: number) {
   return `${value > 0 ? '+' : ''}${formatNumber(value * 100)}%`;
+}
+
+function formatCurrencyAmount(value: number, currency?: string) {
+  const symbols: Record<string, string> = {
+    USD: '$',
+    EUR: '€',
+    GBP: '£',
+    RUB: '₽',
+    PLN: 'zł',
+    CZK: 'Kč',
+    HUF: 'Ft',
+    CHF: 'CHF',
+    JPY: '¥',
+    CAD: 'CA$',
+    AUD: 'A$',
+    HKD: 'HK$',
+    USDT: '₮',
+  };
+  const symbol = currency ? symbols[currency.toUpperCase()] ?? currency : '';
+  return `${symbol}${formatNumber(value)}`;
 }
 
 function parseDate(value: string) {
@@ -235,7 +255,7 @@ export function getBenchmarkMetrics(
   });
   const coverageStatusMetric: Metric = {
     ...statusMetric,
-    value: `${statusMetric.value} · покрытие ${observations.length}/${periods.length} периодов`,
+    value: `${statusMetric.value} · покрытие ${formatNumber(observations.length)}/${formatNumber(periods.length)} периодов`,
   };
   if (observations.length === 0) {
     return [
@@ -323,7 +343,7 @@ export function getBenchmarkMetrics(
   };
   const historyNote =
     observations.length < periods.length
-      ? ` · ${observations.length}/${periods.length} периодов с данными бенчмарка`
+      ? ` · ${formatNumber(observations.length)}/${formatNumber(periods.length)} периодов с данными бенчмарка`
       : '';
   const metrics = [
     benchmarkMetric(
@@ -574,18 +594,14 @@ function buildMetrics(snapshots: Snapshot[], periods: ReturnPeriod[], currency?:
       value:
         varQuantile === null || varAmount === null
           ? '— (нужно не менее 20 периодов)'
-          : `${formatPercent(Math.max(0, -varQuantile))} · ${formatNumber(varAmount)}${
-              currency ? ` ${currency}` : ''
-            }`,
+        : `${formatPercent(Math.max(0, -varQuantile))} · ${formatCurrencyAmount(varAmount, currency)}`,
     },
     {
       label: 'CVaR 95% (период)',
       value:
         cvar === null || cvarAmount === null
           ? '— (нужно не менее 20 периодов)'
-          : `${formatPercent(Math.max(0, -cvar))} · ${formatNumber(cvarAmount)}${
-              currency ? ` ${currency}` : ''
-            }`,
+        : `${formatPercent(Math.max(0, -cvar))} · ${formatCurrencyAmount(cvarAmount, currency)}`,
     },
     { label: 'Sharpe (безрисковая ставка 0%)', value: formatRatio(sharpe) },
     { label: 'Sortino (целевая доходность 0%)', value: formatRatio(sortino) },
