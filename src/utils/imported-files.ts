@@ -17,7 +17,7 @@ export type StatementPeriod =
       kind: 'range';
       start: string;
       end: string;
-      source: 'pdf' | 'filename' | 'manual';
+      source: 'pdf' | 'filename' | 'manual' | 'xlsx';
     }
   | {
       kind: 'all-time';

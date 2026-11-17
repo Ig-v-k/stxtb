@@ -126,7 +126,7 @@ function getSourceMetric(
 ): Metric {
   const statistic = getStatisticMatching(report, pattern);
   if (!statistic) {
-    return { label, value: 'Н/Д' };
+    return { label, value: '— (нет данных в отчёте)' };
   }
 
   if (percentage) {
@@ -478,7 +478,13 @@ export default function HomeScreen() {
       [...accountMetrics, ...resultMetrics].map((metric) => metric.label)
     );
     const additionalMetrics = (latestReport.statistics ?? [])
-      .filter((statistic) => !displayedStatisticLabels.has(statistic.label))
+      .filter(
+        (statistic) =>
+          !displayedStatisticLabels.has(statistic.label) &&
+          !/^(?:unrealized|realized)\s+p.?l(?:\s*\(%\))?$|^(?:win rate|profit factor|payoff ratio|expectancy)$/i.test(
+            statistic.label
+          )
+      )
       .map((statistic) => ({
         label: statistic.label,
         value: formatStatisticValue(statistic.value, latestReport.accountCurrency),
@@ -535,7 +541,7 @@ export default function HomeScreen() {
       ),
       {
         label: 'Contribution to Return',
-        value: 'Н/Д',
+        value: '— (нужны доходности позиций за период)',
       },
       getSourceMetric(
         latestReport,
@@ -553,37 +559,28 @@ export default function HomeScreen() {
       ),
       {
         label: 'Секторная экспозиция',
-        value: 'Н/Д',
+        value: '— (нет классификации по секторам)',
       },
       {
         label: 'Страновая экспозиция',
-        value: 'Н/Д',
+        value: '— (нет классификации по странам)',
       },
       {
         label: 'Валютная экспозиция',
-        value: 'Н/Д',
+        value: '— (нет валюты каждой позиции)',
       },
-      {
-        label: 'Win Rate',
-        value: 'Н/Д',
-      },
-      {
-        label: 'Profit Factor',
-        value: 'Н/Д',
-      },
-      {
-        label: 'Payoff Ratio',
-        value: 'Н/Д',
-      },
-      {
-        label: 'Expectancy',
-        value: 'Н/Д',
-      },
+      getSourceMetric(latestReport, 'Win Rate', /^win rate$/i, undefined, true),
+      getSourceMetric(latestReport, 'Profit Factor', /^profit factor$/i),
+      getSourceMetric(latestReport, 'Payoff Ratio', /^payoff ratio$/i),
+      getSourceMetric(latestReport, 'Expectancy', /^expectancy$/i, latestReport.accountCurrency),
       {
         label: 'Turnover Rate',
-        value: 'Н/Д',
+        value: '— (нужны объем сделок и средняя стоимость портфеля)',
       },
-      { label: 'Fee / Tax Drag', value: feeTaxDrag },
+      {
+        label: 'Fee / Tax Drag',
+        value: totalCosts === null ? '— (нет данных о комиссиях и налогах)' : feeTaxDrag,
+      },
       getSourceMetric(
         latestReport,
         'Средневзвешенный P/E',
@@ -635,7 +632,7 @@ export default function HomeScreen() {
       : []),
     ...BENCHMARK_METRICS.map((label) => ({
       label,
-      value: 'Н/Д',
+      value: '— (нужны данные бенчмарка)',
     })),
   ];
 

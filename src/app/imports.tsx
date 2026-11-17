@@ -1,4 +1,5 @@
 import * as DocumentPicker from 'expo-document-picker';
+import { File } from 'expo-file-system';
 import { extractText, isAvailable } from 'expo-pdf-text-extract';
 import { useRef, useState } from 'react';
 import {
@@ -20,6 +21,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { sanitizeImportedFileName } from '@/utils/imported-files';
 import type { ImportedReport, StatementPeriod } from '@/utils/imported-files';
 import { createStatementPeriod, parseStatement } from '@/utils/statement-stats';
+import { parseXtbWorkbook } from '@/utils/xtb-workbook';
 
 function formatFileSize(size: number | null) {
   if (size === null) {
@@ -55,6 +57,9 @@ function getPeriodSourceLabel(period: StatementPeriod) {
   }
   if (period.source === 'manual') {
     return 'Указан вручную';
+  }
+  if (period.source === 'xlsx') {
+    return 'Определен по XLSX';
   }
   return 'Определен по тексту PDF';
 }
@@ -160,15 +165,25 @@ export default function ImportsScreen() {
     setPeriodDrafts({});
   }
 
-  async function importPdfs() {
+  async function readWorkbookBytes(file: DocumentPicker.DocumentPickerAsset) {
+    if (file.file) {
+      return new Uint8Array(await file.file.arrayBuffer());
+    }
+    return new File(file.uri).bytes();
+  }
+
+  async function importFiles() {
     setError(null);
     setImporting(true);
 
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
+        type: [
+          'application/pdf',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ],
         multiple: true,
-        copyToCacheDirectory: false,
+        copyToCacheDirectory: true,
       });
 
       if (result.canceled) {
@@ -176,16 +191,36 @@ export default function ImportsScreen() {
       }
 
       const selectedFiles = result.assets.filter(
-        (asset) => asset.mimeType === 'application/pdf' || asset.name.toLowerCase().endsWith('.pdf')
+        (asset) =>
+          asset.name.toLowerCase().endsWith('.pdf') ||
+          asset.name.toLowerCase().endsWith('.xlsx') ||
+          asset.mimeType === 'application/pdf' ||
+          asset.mimeType ===
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       );
       if (selectedFiles.length === 0) {
-        setError('Выберите PDF-файл для анализа.');
+        setError('Выберите PDF-отчет или XLSX-экспорт истории операций XTB.');
         return;
       }
 
       const additions: ImportedReport[] = [];
 
       for (const [index, file] of selectedFiles.entries()) {
+        const isXlsx =
+          file.name.toLowerCase().endsWith('.xlsx') ||
+          file.mimeType ===
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        if (isXlsx) {
+          additions.push(
+            parseXtbWorkbook(
+              await readWorkbookBytes(file),
+              sanitizeImportedFileName(file.name),
+              typeof file.size === 'number' ? file.size : null
+            )
+          );
+          continue;
+        }
+
         let statement: ReturnType<typeof parseStatement> | undefined;
         let analysisError: string | undefined;
 
@@ -253,14 +288,14 @@ export default function ImportsScreen() {
               Анализ
             </ThemedText>
             <ThemedText themeColor="textSecondary">
-              PDF обрабатывается на устройстве. Результаты доступны только пока приложение открыто.
+              PDF и XLSX обрабатываются на устройстве. Результаты доступны только пока приложение открыто.
             </ThemedText>
           </View>
 
           <Pressable
             accessibilityRole="button"
             disabled={importing}
-            onPress={importPdfs}
+            onPress={importFiles}
             style={({ pressed }) => [
               styles.importButton,
               { backgroundColor: theme.text },
@@ -270,7 +305,7 @@ export default function ImportsScreen() {
               <ActivityIndicator color={theme.background} />
             ) : (
               <ThemedText style={[styles.importButtonText, { color: theme.background }]}>
-                Выбрать PDF-файлы
+                Выбрать PDF- или XLSX-файлы
               </ThemedText>
             )}
           </Pressable>
@@ -304,11 +339,13 @@ export default function ImportsScreen() {
           {reports.length === 0 ? (
             <ThemedView type="backgroundElement" style={styles.emptyCard}>
               <ThemedText type="subtitle" style={styles.emptyIcon}>
-                PDF
+                PDF / XLSX
               </ThemedText>
-              <ThemedText type="smallBold">Импортируйте отчет для анализа</ThemedText>
+              <ThemedText type="smallBold">
+                Импортируйте PDF-отчет или XLSX-историю операций
+              </ThemedText>
               <ThemedText type="small" themeColor="textSecondary" style={styles.emptyHint}>
-                Прибыль, количество позиций и их объем будут сгруппированы по периоду отчета.
+                Операции, сделки и открытые позиции будут включены в аналитику, если они есть в файле.
               </ThemedText>
             </ThemedView>
           ) : (
@@ -328,7 +365,7 @@ export default function ImportsScreen() {
                     style={styles.fileCard}>
                     <View style={styles.fileBadge}>
                       <ThemedText type="smallBold" style={styles.fileBadgeText}>
-                        PDF
+                        {report.name.toLowerCase().endsWith('.xlsx') ? 'XLSX' : 'PDF'}
                       </ThemedText>
                     </View>
                     <View style={styles.fileDetails}>
