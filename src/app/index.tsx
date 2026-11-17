@@ -6,7 +6,11 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useBenchmarkData } from '@/hooks/use-benchmark-data';
 import { useSessionReports } from '@/hooks/use-session-reports';
-import type { ImportedReport, StatementPosition } from '@/utils/imported-files';
+import {
+  isMetricValueAvailable,
+  type ImportedReport,
+  type StatementPosition,
+} from '@/utils/imported-files';
 import {
   getBenchmarkMetrics,
   getDynamicMetrics,
@@ -482,7 +486,7 @@ export default function HomeScreen() {
       .filter(
         (statistic) =>
           !displayedStatisticLabels.has(statistic.label) &&
-          !['Общий доход', 'Объем сделок'].includes(statistic.label) &&
+          statistic.label !== 'Общий доход' &&
           !/^(?:unrealized|realized)\s+p.?l(?:\s*\(%\))?$|^(?:win rate|profit factor|payoff ratio|expectancy)$/i.test(
             statistic.label
           )
@@ -647,6 +651,7 @@ export default function HomeScreen() {
         )
       : []),
   ];
+  const availableMetrics = metrics.filter((metric) => isMetricValueAvailable(metric.value));
 
   return (
     <ThemedView style={styles.screen}>
@@ -686,8 +691,11 @@ export default function HomeScreen() {
                   style={styles.sectionTitle}>
                   ПОКАЗАТЕЛИ
                 </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Доступно метрик: {availableMetrics.length}
+                </ThemedText>
                 <View style={styles.metricList}>
-                  {metrics.map((metric, index) => (
+                  {availableMetrics.map((metric, index) => (
                     <View key={`${metric.label}-${index}`} style={styles.metricRow}>
                       <ThemedText type="small" style={styles.metricLabel}>
                         {SHORT_METRIC_LABELS[metric.label] ?? metric.label}

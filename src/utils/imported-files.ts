@@ -12,6 +12,15 @@ export type StatementStatistic = {
   value: string;
 };
 
+export function isMetricValueAvailable(value: string) {
+  const normalized = value.trim();
+  return (
+    !/^(?:—|–|н\/д|н\.д\.|n\/a|na)(?:\s|$|[.(])/i.test(normalized) &&
+    !/^(?:недоступен:|доступен только|загрузка общедоступных рядов)/i.test(normalized) &&
+    !/(?:·\s*)[—–]\s*\(/.test(normalized)
+  );
+}
+
 export type StatementPeriod =
   | {
       kind: 'range';

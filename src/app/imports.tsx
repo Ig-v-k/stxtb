@@ -18,7 +18,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useSessionReports } from '@/hooks/use-session-reports';
 import { useTheme } from '@/hooks/use-theme';
-import { sanitizeImportedFileName } from '@/utils/imported-files';
+import { isMetricValueAvailable, sanitizeImportedFileName } from '@/utils/imported-files';
 import type { ImportedReport, StatementPeriod } from '@/utils/imported-files';
 import { createStatementPeriod, parseStatement } from '@/utils/statement-stats';
 import { parseXtbWorkbook } from '@/utils/xtb-workbook';
@@ -84,6 +84,26 @@ export default function ImportsScreen() {
     Record<string, { start: string; end: string }>
   >({});
   const passwordResolver = useRef<((password: string | null) => void) | null>(null);
+  const commonMetricCount =
+    reports.length === 0
+      ? 0
+      : reports
+          .slice(1)
+          .reduce(
+            (labels, report) => {
+              const availableLabels = new Set(
+                (report.statistics ?? [])
+                  .filter((statistic) => isMetricValueAvailable(statistic.value))
+                  .map((statistic) => statistic.label)
+              );
+              return new Set([...labels].filter((label) => availableLabels.has(label)));
+            },
+            new Set(
+              (reports[0].statistics ?? [])
+                .filter((statistic) => isMetricValueAvailable(statistic.value))
+                .map((statistic) => statistic.label)
+            )
+          ).size;
 
   function requestPdfPassword(incorrect = false) {
     setPdfPassword('');
@@ -318,6 +338,14 @@ export default function ImportsScreen() {
               {reports.length} {reports.length === 1 ? 'отчет' : 'отчетов'}
             </ThemedText>
           </View>
+          {reports.length > 0 && (
+            <ThemedText
+              type="small"
+              themeColor="textSecondary"
+              style={styles.commonMetricCount}>
+              Метрик доступно во всех отчетах: {commonMetricCount}
+            </ThemedText>
+          )}
 
           {reports.length > 0 && (
             <Pressable
@@ -354,8 +382,8 @@ export default function ImportsScreen() {
                 const draft = periodDrafts[report.id] ?? { start: '', end: '' };
                 const periodIsValid = createStatementPeriod(draft.start, draft.end) !== null;
                 const editingPeriod = editingPeriodIds.includes(report.id);
-                const profit = report.statistics?.find(
-                  (statistic) => statistic.label === 'Прибыль / убыток'
+                const availableStatistics = (report.statistics ?? []).filter((statistic) =>
+                  isMetricValueAvailable(statistic.value)
                 );
 
                 return (
@@ -387,8 +415,22 @@ export default function ImportsScreen() {
                       )}
                       <ThemedText type="small" themeColor="textSecondary">
                         {report.positions?.length ?? 0} позиций
-                        {profit ? ` · Прибыль / убыток: ${profit.value}` : ''}
                       </ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        Доступно метрик: {availableStatistics.length}
+                      </ThemedText>
+                      {availableStatistics.map((statistic, index) => (
+                        <View
+                          key={`${statistic.label}-${index}`}
+                          style={styles.statisticRow}>
+                          <ThemedText type="small" style={styles.statisticLabel}>
+                            {statistic.label}
+                          </ThemedText>
+                          <ThemedText type="small" style={styles.statisticValue}>
+                            {statistic.value}
+                          </ThemedText>
+                        </View>
+                      ))}
                       {report.analysisError && (
                         <ThemedText type="small" themeColor="textSecondary">
                           {report.analysisError}
@@ -581,6 +623,10 @@ const styles = StyleSheet.create({
     marginTop: Spacing.five,
     marginBottom: Spacing.three,
   },
+  commonMetricCount: {
+    marginTop: -Spacing.two,
+    marginBottom: Spacing.two,
+  },
   clearButton: {
     alignSelf: 'flex-end',
     minHeight: 40,
@@ -634,6 +680,18 @@ const styles = StyleSheet.create({
   fileDetails: {
     flex: 1,
     gap: Spacing.one,
+  },
+  statisticRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+  },
+  statisticLabel: {
+    flex: 1,
+  },
+  statisticValue: {
+    flex: 1,
+    textAlign: 'right',
   },
   periodEditor: {
     gap: Spacing.two,
