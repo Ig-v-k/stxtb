@@ -18,9 +18,8 @@ import { ThemedView } from '@/components/themed-view';
 import { Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useSessionReports } from '@/hooks/use-session-reports';
 import { useTheme } from '@/hooks/use-theme';
-import type { ImportedReport, StatementPeriod } from '@/utils/imported-files';
-import { isMetricValueAvailable, sanitizeImportedFileName } from '@/utils/imported-files';
-import { createStatementPeriod, parseStatement } from '@/utils/statement-stats';
+import { sanitizeImportedFileName } from '@/utils/imported-files';
+import { parseStatement } from '@/utils/statement-stats';
 import { parseXtbWorkbook } from '@/utils/xtb-workbook';
 
 function formatFileSize(size: number | null) {
@@ -36,34 +35,6 @@ function formatFileSize(size: number | null) {
   return `${(size / (1024 * 1024)).toFixed(1)} МБ`;
 }
 
-function formatPeriodDate(value: string) {
-  const [year, month, day] = value.split('-');
-  return `${day}.${month}.${year}`;
-}
-
-function formatPeriod(period: StatementPeriod | null) {
-  if (!period) {
-    return 'Период не определен';
-  }
-  if (period.kind === 'all-time') {
-    return 'За всё время';
-  }
-  return `${formatPeriodDate(period.start)} – ${formatPeriodDate(period.end)}`;
-}
-
-function getPeriodSourceLabel(period: StatementPeriod) {
-  if (period.source === 'filename') {
-    return 'Определен по имени файла — проверьте';
-  }
-  if (period.source === 'manual') {
-    return 'Указан вручную';
-  }
-  if (period.source === 'xlsx') {
-    return 'Определен по XLSX';
-  }
-  return 'Определен по тексту PDF';
-}
-
 function getPdfErrorCode(error: unknown) {
   if (!error || typeof error !== 'object' || !('code' in error)) {
     return undefined;
@@ -73,37 +44,13 @@ function getPdfErrorCode(error: unknown) {
 
 export default function ImportsScreen() {
   const theme = useTheme();
-  const { reports, addReports, updateReportPeriod, clearReports } = useSessionReports();
+  const { reports, addReports, clearReports } = useSessionReports();
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [passwordPromptVisible, setPasswordPromptVisible] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState('');
   const [pdfPassword, setPdfPassword] = useState('');
-  const [editingPeriodIds, setEditingPeriodIds] = useState<string[]>([]);
-  const [periodDrafts, setPeriodDrafts] = useState<
-    Record<string, { start: string; end: string }>
-  >({});
   const passwordResolver = useRef<((password: string | null) => void) | null>(null);
-  const commonMetricCount =
-    reports.length === 0
-      ? 0
-      : reports
-          .slice(1)
-          .reduce(
-            (labels, report) => {
-              const availableLabels = new Set(
-                (report.statistics ?? [])
-                  .filter((statistic) => isMetricValueAvailable(statistic.value))
-                  .map((statistic) => statistic.label)
-              );
-              return new Set([...labels].filter((label) => availableLabels.has(label)));
-            },
-            new Set(
-              (reports[0].statistics ?? [])
-                .filter((statistic) => isMetricValueAvailable(statistic.value))
-                .map((statistic) => statistic.label)
-            )
-          ).size;
 
   function requestPdfPassword(incorrect = false) {
     setPdfPassword('');
@@ -148,41 +95,8 @@ export default function ImportsScreen() {
     }
   }
 
-  function openPeriodEditor(report: ImportedReport) {
-    const period =
-      report.period?.kind === 'range'
-        ? { start: formatPeriodDate(report.period.start), end: formatPeriodDate(report.period.end) }
-        : { start: '', end: '' };
-    setPeriodDrafts((current) => ({ ...current, [report.id]: period }));
-    setEditingPeriodIds((current) =>
-      current.includes(report.id) ? current : [...current, report.id]
-    );
-  }
-
-  function closePeriodEditor(id: string) {
-    setEditingPeriodIds((current) => current.filter((reportId) => reportId !== id));
-  }
-
-  function saveReportPeriod(id: string) {
-    const draft = periodDrafts[id];
-    const period = draft ? createStatementPeriod(draft.start, draft.end) : null;
-    if (!period) {
-      return;
-    }
-
-    updateReportPeriod(id, period);
-    closePeriodEditor(id);
-  }
-
-  function setReportAsAllTime(id: string) {
-    updateReportPeriod(id, { kind: 'all-time', source: 'manual' });
-    closePeriodEditor(id);
-  }
-
   function clearCurrentReports() {
     clearReports();
-    setEditingPeriodIds([]);
-    setPeriodDrafts({});
   }
 
   async function readWorkbookBytes(file: DocumentPicker.DocumentPickerAsset) {
@@ -332,20 +246,12 @@ export default function ImportsScreen() {
 
           <View style={styles.historyHeader}>
             <ThemedText type="subtitle" style={styles.sectionTitle}>
-              Отчеты в этой сессии
+              Файлы в этой сессии
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              {reports.length} {reports.length === 1 ? 'отчет' : 'отчетов'}
+              {reports.length} {reports.length === 1 ? 'файл' : 'файлов'}
             </ThemedText>
           </View>
-          {reports.length > 0 && (
-            <ThemedText
-              type="small"
-              themeColor="textSecondary"
-              style={styles.commonMetricCount}>
-              Метрик доступно во всех отчетах: {commonMetricCount}
-            </ThemedText>
-          )}
 
           {reports.length > 0 && (
             <Pressable
@@ -373,19 +279,12 @@ export default function ImportsScreen() {
                 Импортируйте PDF-отчет или XLSX-историю операций
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary" style={styles.emptyHint}>
-                Операции, сделки и открытые позиции будут включены в аналитику, если они есть в файле.
+                Выберите файлы, чтобы добавить их в эту сессию.
               </ThemedText>
             </ThemedView>
           ) : (
             <View style={styles.fileList}>
               {reports.map((report) => {
-                const draft = periodDrafts[report.id] ?? { start: '', end: '' };
-                const periodIsValid = createStatementPeriod(draft.start, draft.end) !== null;
-                const editingPeriod = editingPeriodIds.includes(report.id);
-                const availableStatistics = (report.statistics ?? []).filter((statistic) =>
-                  isMetricValueAvailable(statistic.value)
-                );
-
                 return (
                   <ThemedView
                     key={report.id}
@@ -401,121 +300,8 @@ export default function ImportsScreen() {
                         {report.name}
                       </ThemedText>
                       <ThemedText type="small" themeColor="textSecondary">
-                        {formatFileSize(report.size)} · {formatPeriod(report.period)}
+                        {formatFileSize(report.size)}
                       </ThemedText>
-                      {report.period && (
-                        <ThemedText type="small" themeColor="textSecondary">
-                          {getPeriodSourceLabel(report.period)}
-                        </ThemedText>
-                      )}
-                      {report.periodConflict && (
-                        <ThemedText type="small" themeColor="textSecondary">
-                          Даты в PDF и имени файла расходятся — проверьте период.
-                        </ThemedText>
-                      )}
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {report.positions?.length ?? 0} позиций
-                      </ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        Доступно метрик: {availableStatistics.length}
-                      </ThemedText>
-                      {availableStatistics.map((statistic, index) => (
-                        <View
-                          key={`${statistic.label}-${index}`}
-                          style={styles.statisticRow}>
-                          <ThemedText type="small" style={styles.statisticLabel}>
-                            {statistic.label}
-                          </ThemedText>
-                          <ThemedText type="small" style={styles.statisticValue}>
-                            {statistic.value}
-                          </ThemedText>
-                        </View>
-                      ))}
-                      {report.analysisError && (
-                        <ThemedText type="small" themeColor="textSecondary">
-                          {report.analysisError}
-                        </ThemedText>
-                      )}
-
-                      {!editingPeriod ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          onPress={() => openPeriodEditor(report)}
-                          style={styles.periodAction}>
-                          <ThemedText type="smallBold">
-                            {report.period ? 'Изменить период' : 'Указать период'}
-                          </ThemedText>
-                        </Pressable>
-                      ) : (
-                        <View style={styles.periodEditor}>
-                          <ThemedText type="smallBold">Период отчета</ThemedText>
-                          <View style={styles.periodInputs}>
-                            <TextInput
-                              accessibilityLabel="Начало периода, ДД.ММ.ГГГГ"
-                              autoCapitalize="none"
-                              onChangeText={(start) =>
-                                setPeriodDrafts((current) => ({
-                                  ...current,
-                                  [report.id]: { ...draft, start },
-                                }))
-                              }
-                              placeholder="ДД.ММ.ГГГГ"
-                              placeholderTextColor={theme.textSecondary}
-                              style={[
-                                styles.periodInput,
-                                { borderColor: theme.textSecondary, color: theme.text },
-                              ]}
-                              value={draft.start}
-                            />
-                            <TextInput
-                              accessibilityLabel="Конец периода, ДД.ММ.ГГГГ"
-                              autoCapitalize="none"
-                              onChangeText={(end) =>
-                                setPeriodDrafts((current) => ({
-                                  ...current,
-                                  [report.id]: { ...draft, end },
-                                }))
-                              }
-                              placeholder="ДД.ММ.ГГГГ"
-                              placeholderTextColor={theme.textSecondary}
-                              style={[
-                                styles.periodInput,
-                                { borderColor: theme.textSecondary, color: theme.text },
-                              ]}
-                              value={draft.end}
-                            />
-                          </View>
-                          <View style={styles.periodActions}>
-                            <Pressable
-                              accessibilityRole="button"
-                              disabled={!periodIsValid}
-                              onPress={() => saveReportPeriod(report.id)}
-                              style={styles.periodAction}>
-                              <ThemedText
-                                type="smallBold"
-                                themeColor={periodIsValid ? 'text' : 'textSecondary'}>
-                                Применить даты
-                              </ThemedText>
-                            </Pressable>
-                            <Pressable
-                              accessibilityRole="button"
-                              onPress={() => setReportAsAllTime(report.id)}
-                              style={styles.periodAction}>
-                              <ThemedText type="smallBold" themeColor="textSecondary">
-                                За всё время
-                              </ThemedText>
-                            </Pressable>
-                            <Pressable
-                              accessibilityRole="button"
-                              onPress={() => closePeriodEditor(report.id)}
-                              style={styles.periodAction}>
-                              <ThemedText type="small" themeColor="textSecondary">
-                                Отмена
-                              </ThemedText>
-                            </Pressable>
-                          </View>
-                        </View>
-                      )}
                     </View>
                   </ThemedView>
                 );
@@ -623,10 +409,6 @@ const styles = StyleSheet.create({
     marginTop: Spacing.five,
     marginBottom: Spacing.three,
   },
-  commonMetricCount: {
-    marginTop: -Spacing.two,
-    marginBottom: Spacing.two,
-  },
   clearButton: {
     alignSelf: 'flex-end',
     minHeight: 40,
@@ -680,43 +462,6 @@ const styles = StyleSheet.create({
   fileDetails: {
     flex: 1,
     gap: Spacing.one,
-  },
-  statisticRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.two,
-  },
-  statisticLabel: {
-    flex: 1,
-  },
-  statisticValue: {
-    flex: 1,
-    textAlign: 'right',
-  },
-  periodEditor: {
-    gap: Spacing.two,
-    marginTop: Spacing.one,
-  },
-  periodInputs: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-  },
-  periodInput: {
-    flex: 1,
-    minHeight: 44,
-    paddingHorizontal: Spacing.two,
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    fontFamily: Fonts.mono,
-  },
-  periodActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-  },
-  periodAction: {
-    minHeight: 40,
-    justifyContent: 'center',
   },
   modalBackdrop: {
     flex: 1,
