@@ -19,8 +19,8 @@ import { Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useSessionReports } from '@/hooks/use-session-reports';
 import { useTheme } from '@/hooks/use-theme';
 import type { ImportedReport, StatementPeriod } from '@/utils/imported-files';
-import { isMetricValueAvailable, sanitizeImportedFileName } from '@/utils/imported-files';
-import { createStatementPeriod, parseStatement } from '@/utils/statement-stats';
+import { sanitizeImportedFileName } from '@/utils/imported-files';
+import { parseStatement } from '@/utils/statement-stats';
 import { parseXtbWorkbook } from '@/utils/xtb-workbook';
 
 function formatFileSize(size: number | null) {
@@ -73,38 +73,13 @@ function getPdfErrorCode(error: unknown) {
 
 export default function ImportsScreen() {
   const theme = useTheme();
-  const { reports, addReports, updateReportPeriod, clearReports } = useSessionReports();
+  const { reports, addReports, clearReports } = useSessionReports();
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [passwordPromptVisible, setPasswordPromptVisible] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState('');
   const [pdfPassword, setPdfPassword] = useState('');
-  const [editingPeriodIds, setEditingPeriodIds] = useState<string[]>([]);
-  const [periodDrafts, setPeriodDrafts] = useState<
-    Record<string, { start: string; end: string }>
-  >({});
   const passwordResolver = useRef<((password: string | null) => void) | null>(null);
-  const commonMetricCount =
-    reports.length === 0
-      ? 0
-      : reports
-          .slice(1)
-          .reduce(
-            (labels, report) => {
-              const availableLabels = new Set(
-                (report.statistics ?? [])
-                  .filter((statistic) => isMetricValueAvailable(statistic.value))
-                  .map((statistic) => statistic.label)
-              );
-              return new Set([...labels].filter((label) => availableLabels.has(label)));
-            },
-            new Set(
-              (reports[0].statistics ?? [])
-                .filter((statistic) => isMetricValueAvailable(statistic.value))
-                .map((statistic) => statistic.label)
-            )
-          ).size;
-
   function requestPdfPassword(incorrect = false) {
     setPdfPassword('');
     setPasswordMessage(
@@ -148,41 +123,8 @@ export default function ImportsScreen() {
     }
   }
 
-  function openPeriodEditor(report: ImportedReport) {
-    const period =
-      report.period?.kind === 'range'
-        ? { start: formatPeriodDate(report.period.start), end: formatPeriodDate(report.period.end) }
-        : { start: '', end: '' };
-    setPeriodDrafts((current) => ({ ...current, [report.id]: period }));
-    setEditingPeriodIds((current) =>
-      current.includes(report.id) ? current : [...current, report.id]
-    );
-  }
-
-  function closePeriodEditor(id: string) {
-    setEditingPeriodIds((current) => current.filter((reportId) => reportId !== id));
-  }
-
-  function saveReportPeriod(id: string) {
-    const draft = periodDrafts[id];
-    const period = draft ? createStatementPeriod(draft.start, draft.end) : null;
-    if (!period) {
-      return;
-    }
-
-    updateReportPeriod(id, period);
-    closePeriodEditor(id);
-  }
-
-  function setReportAsAllTime(id: string) {
-    updateReportPeriod(id, { kind: 'all-time', source: 'manual' });
-    closePeriodEditor(id);
-  }
-
   function clearCurrentReports() {
     clearReports();
-    setEditingPeriodIds([]);
-    setPeriodDrafts({});
   }
 
   async function readWorkbookBytes(file: DocumentPicker.DocumentPickerAsset) {
@@ -270,19 +212,6 @@ export default function ImportsScreen() {
       }
 
       addReports(additions);
-      const reportsWithoutPeriod = additions.filter((report) => !report.period);
-      if (reportsWithoutPeriod.length) {
-        setEditingPeriodIds((current) => [
-          ...current,
-          ...reportsWithoutPeriod.map((report) => report.id),
-        ]);
-        setPeriodDrafts((current) => ({
-          ...current,
-          ...Object.fromEntries(
-            reportsWithoutPeriod.map((report) => [report.id, { start: '', end: '' }])
-          ),
-        }));
-      }
     } catch (importError) {
       setError(
         importError instanceof Error
@@ -339,15 +268,6 @@ export default function ImportsScreen() {
             </ThemedText>
           </View>
           {reports.length > 0 && (
-            <ThemedText
-              type="small"
-              themeColor="textSecondary"
-              style={styles.commonMetricCount}>
-              Метрик доступно во всех отчетах: {commonMetricCount}
-            </ThemedText>
-          )}
-
-          {reports.length > 0 && (
             <Pressable
               accessibilityRole="button"
               onPress={clearCurrentReports}
@@ -379,16 +299,6 @@ export default function ImportsScreen() {
           ) : (
             <View style={styles.fileList}>
               {reports.map((report) => {
-                const draft = periodDrafts[report.id] ?? { start: '', end: '' };
-                const periodIsValid = createStatementPeriod(draft.start, draft.end) !== null;
-                const editingPeriod = editingPeriodIds.includes(report.id);
-                const profit = report.statistics?.find(
-                  (statistic) => statistic.label === 'Прибыль / убыток'
-                );
-                const availableStatistics = (report.statistics ?? []).filter((statistic) =>
-                  isMetricValueAvailable(statistic.value)
-                );
-
                 return (
                   <ThemedView
                     key={report.id}
@@ -416,109 +326,10 @@ export default function ImportsScreen() {
                           Даты в PDF и имени файла расходятся — проверьте период.
                         </ThemedText>
                       )}
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {report.positions?.length ?? 0} позиций
-                        {profit ? ` · Прибыль / убыток: ${profit.value}` : ''}
-                      </ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        Доступно метрик: {availableStatistics.length}
-                      </ThemedText>
-                      {availableStatistics.map((statistic, index) => (
-                        <View
-                          key={`${statistic.label}-${index}`}
-                          style={styles.statisticRow}>
-                          <ThemedText type="small" style={styles.statisticLabel}>
-                            {statistic.label}
-                          </ThemedText>
-                          <ThemedText type="small" style={styles.statisticValue}>
-                            {statistic.value}
-                          </ThemedText>
-                        </View>
-                      ))}
                       {report.analysisError && (
                         <ThemedText type="small" themeColor="textSecondary">
                           {report.analysisError}
                         </ThemedText>
-                      )}
-
-                      {!editingPeriod ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          onPress={() => openPeriodEditor(report)}
-                          style={styles.periodAction}>
-                          <ThemedText type="smallBold">
-                            {report.period ? 'Изменить период' : 'Указать период'}
-                          </ThemedText>
-                        </Pressable>
-                      ) : (
-                        <View style={styles.periodEditor}>
-                          <ThemedText type="smallBold">Период отчета</ThemedText>
-                          <View style={styles.periodInputs}>
-                            <TextInput
-                              accessibilityLabel="Начало периода, ДД.ММ.ГГГГ"
-                              autoCapitalize="none"
-                              onChangeText={(start) =>
-                                setPeriodDrafts((current) => ({
-                                  ...current,
-                                  [report.id]: { ...draft, start },
-                                }))
-                              }
-                              placeholder="ДД.ММ.ГГГГ"
-                              placeholderTextColor={theme.textSecondary}
-                              style={[
-                                styles.periodInput,
-                                { borderColor: theme.textSecondary, color: theme.text },
-                              ]}
-                              value={draft.start}
-                            />
-                            <TextInput
-                              accessibilityLabel="Конец периода, ДД.ММ.ГГГГ"
-                              autoCapitalize="none"
-                              onChangeText={(end) =>
-                                setPeriodDrafts((current) => ({
-                                  ...current,
-                                  [report.id]: { ...draft, end },
-                                }))
-                              }
-                              placeholder="ДД.ММ.ГГГГ"
-                              placeholderTextColor={theme.textSecondary}
-                              style={[
-                                styles.periodInput,
-                                { borderColor: theme.textSecondary, color: theme.text },
-                              ]}
-                              value={draft.end}
-                            />
-                          </View>
-                          <View style={styles.periodActions}>
-                            <Pressable
-                              accessibilityRole="button"
-                              disabled={!periodIsValid}
-                              onPress={() => saveReportPeriod(report.id)}
-                              style={styles.periodAction}>
-                              <ThemedText
-                                type="smallBold"
-                                themeColor={periodIsValid ? 'text' : 'textSecondary'}>
-                                Применить даты
-                              </ThemedText>
-                            </Pressable>
-                            <Pressable
-                              accessibilityRole="button"
-                              onPress={() => setReportAsAllTime(report.id)}
-                              style={styles.periodAction}>
-                              <ThemedText type="smallBold" themeColor="textSecondary">
-                                За всё время
-                              </ThemedText>
-                            </Pressable>
-                            <Pressable
-                              accessibilityRole="button"
-                              onPress={() => closePeriodEditor(report.id)}
-                              style={styles.periodAction}>
-                              <ThemedText type="small" themeColor="textSecondary">
-                                Отмена
-                              </ThemedText>
-                            </Pressable>
-                          </View>
-                        </View>
                       )}
                     </View>
                   </ThemedView>
@@ -627,10 +438,6 @@ const styles = StyleSheet.create({
     marginTop: Spacing.five,
     marginBottom: Spacing.three,
   },
-  commonMetricCount: {
-    marginTop: -Spacing.two,
-    marginBottom: Spacing.two,
-  },
   clearButton: {
     alignSelf: 'flex-end',
     minHeight: 40,
@@ -684,43 +491,6 @@ const styles = StyleSheet.create({
   fileDetails: {
     flex: 1,
     gap: Spacing.one,
-  },
-  statisticRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.two,
-  },
-  statisticLabel: {
-    flex: 1,
-  },
-  statisticValue: {
-    flex: 1,
-    textAlign: 'right',
-  },
-  periodEditor: {
-    gap: Spacing.two,
-    marginTop: Spacing.one,
-  },
-  periodInputs: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-  },
-  periodInput: {
-    flex: 1,
-    minHeight: 44,
-    paddingHorizontal: Spacing.two,
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    fontFamily: Fonts.mono,
-  },
-  periodActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-  },
-  periodAction: {
-    minHeight: 40,
-    justifyContent: 'center',
   },
   modalBackdrop: {
     flex: 1,
