@@ -10,6 +10,7 @@ import {
   type Metric,
 } from './portfolio-metrics';
 import { parseStatisticNumber } from './statement-stats';
+import { formatDecimal } from './number-format';
 
 export const SHORT_METRIC_LABELS: Record<string, string> = {
   'Стоимость счета': 'Счёт',
@@ -188,7 +189,7 @@ export function formatReportPeriod(report: ImportedReport) {
 }
 
 function formatNumber(value: number) {
-  return value.toFixed(2).replace('.', ',');
+  return formatDecimal(value);
 }
 
 function formatMoney(value: number, currency?: string) {

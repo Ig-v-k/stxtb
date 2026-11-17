@@ -22,18 +22,19 @@ import type { ImportedReport, StatementPeriod } from '@/utils/imported-files';
 import { sanitizeImportedFileName } from '@/utils/imported-files';
 import { parseStatement } from '@/utils/statement-stats';
 import { parseXtbWorkbook } from '@/utils/xtb-workbook';
+import { formatDecimal } from '@/utils/number-format';
 
 function formatFileSize(size: number | null) {
   if (size === null) {
     return 'Размер не указан';
   }
   if (size < 1024) {
-    return `${size.toFixed(2).replace('.', ',')} Б`;
+    return `${formatDecimal(size)} Б`;
   }
   if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(2).replace('.', ',')} КБ`;
+    return `${formatDecimal(size / 1024)} КБ`;
   }
-  return `${(size / (1024 * 1024)).toFixed(2).replace('.', ',')} МБ`;
+  return `${formatDecimal(size / (1024 * 1024))} МБ`;
 }
 
 function formatPeriodDate(value: string) {
@@ -264,7 +265,7 @@ export default function ImportsScreen() {
               Отчеты в этой сессии
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              {reports.length.toFixed(2).replace('.', ',')} {reports.length === 1 ? 'отчет' : 'отчетов'}
+              {formatDecimal(reports.length)} {reports.length === 1 ? 'отчет' : 'отчетов'}
             </ThemedText>
           </View>
           {reports.length > 0 && (

@@ -1,4 +1,5 @@
 import type { ImportedReport } from './imported-files';
+import { formatDecimal } from './number-format';
 import { parseStatisticNumber } from './statement-stats';
 import type { BenchmarkData, MarketDataPoint } from './benchmark-data';
 
@@ -23,7 +24,7 @@ const DAY_MS = 86_400_000;
 const INSUFFICIENT_HISTORY = 'Н/Д';
 
 function formatNumber(value: number) {
-  return value.toFixed(2).replace('.', ',');
+  return formatDecimal(value);
 }
 
 function formatPercent(value: number) {

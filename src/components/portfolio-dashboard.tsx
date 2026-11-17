@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import type { Metric } from '@/utils/portfolio-metrics';
 import type { ImportedReport } from '@/utils/imported-files';
+import { formatDecimal } from '@/utils/number-format';
 import {
   getMetricDescription,
   SHORT_METRIC_LABELS,
@@ -64,7 +65,7 @@ export function PortfolioDashboard({
                     ПОДРОБНЫЕ ПОКАЗАТЕЛИ
                   </ThemedText>
                   <ThemedText type="small" themeColor="textSecondary">
-                    Всего доступно метрик: {availableMetricCount.toFixed(2).replace('.', ',')}
+                    Всего доступно метрик: {formatDecimal(availableMetricCount)}
                   </ThemedText>
                   <MetricList metrics={otherMetrics} onSelect={onSelectMetric} />
                 </View>

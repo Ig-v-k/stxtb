@@ -1,6 +1,7 @@
 import * as XLSX from '@e965/xlsx';
 
 import type { ImportedReport, StatementPeriod, StatementPosition, StatementStatistic } from './imported-files';
+import { formatDecimal } from './number-format';
 import { parsePeriodDate, parseStatisticNumber } from './statement-stats';
 
 type Cell = string | number | boolean | Date | null | undefined;
@@ -106,7 +107,7 @@ function findPeriod(sheets: Row[][]): StatementPeriod | null {
 }
 
 function formatAmount(value: number) {
-  return value.toFixed(2).replace('.', ',');
+  return formatDecimal(value);
 }
 
 function formatMoney(value: number, currency?: string, signed = false) {
@@ -127,7 +128,7 @@ function formatMoney(value: number, currency?: string, signed = false) {
   };
   const symbol = currency ? symbols[currency.toUpperCase()] ?? currency : '';
   const sign = value < 0 ? '-' : signed && value > 0 ? '+' : '';
-  return `${sign}${symbol}${Math.abs(value).toFixed(2).replace('.', ',')}`;
+  return `${sign}${symbol}${formatDecimal(Math.abs(value))}`;
 }
 
 function addStatistic(statistics: StatementStatistic[], label: string, value: string) {
