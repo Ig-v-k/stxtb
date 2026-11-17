@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -113,6 +114,116 @@ const PRIMARY_METRIC_PATTERNS = [
   /^Закрытых сделок$/i,
   /^Expectancy$/i,
 ];
+
+const METRIC_DESCRIPTIONS: Record<string, string> = {
+  'Стоимость счета': 'Текущая стоимость счета с учетом денежных средств и открытых позиций.',
+  'Стоимость счёта': 'Текущая стоимость счета с учетом денежных средств и открытых позиций.',
+  'Account Value': 'Текущая стоимость счета с учетом денежных средств и открытых позиций.',
+  'Net Asset Value': 'Стоимость активов за вычетом обязательств по счету.',
+  Equity: 'Текущая стоимость средств на счете с учетом открытых позиций.',
+  Баланс: 'Денежный баланс счета без учета текущего результата открытых позиций.',
+  'Свободные средства': 'Средства, доступные для новых операций после учета обеспечения.',
+  Обеспечение: 'Средства, зарезервированные брокером для поддержания открытых позиций.',
+  'Изменение счёта': 'Изменение стоимости счета относительно предыдущего отчета.',
+  'Прибыль / убыток': 'Прибыль или убыток за отчетный период.',
+  Дивиденды: 'Сумма полученных дивидендов за отчетный период.',
+  Пополнения: 'Сумма денежных средств, внесенных на счет за отчетный период.',
+  Выводы: 'Сумма денежных средств, выведенных со счета за отчетный период.',
+  Комиссии: 'Комиссии, удержанные за отчетный период.',
+  Свопы: 'Начисления или списания за перенос открытых позиций.',
+  'Unrealized PnL': 'Текущая прибыль или убыток по еще не закрытым позициям.',
+  'Unrealized PnL (%)': 'Нереализованный результат по открытым позициям в процентах.',
+  'Realized PnL': 'Прибыль или убыток по закрытым позициям.',
+  'Realized PnL (%)': 'Результат по закрытым позициям в процентах.',
+  'Общий доход': 'Сумма доходов, указанная в отчете за период.',
+  'Объем сделок': 'Общая стоимость операций покупки и продажи за период.',
+  'Стоимость бумаг': 'Суммарная рыночная стоимость ценных бумаг в портфеле.',
+  'Доля бумаг в счёте': 'Какая часть стоимости счета приходится на ценные бумаги.',
+  'Топ-3 (доля счёта)': 'Доля трех крупнейших позиций в общей стоимости счета.',
+  'Топ-3 (доля бумаг)': 'Доля трех крупнейших позиций в общей стоимости ценных бумаг.',
+  'Топ-1 (доля счёта)': 'Доля крупнейшей позиции в общей стоимости счета.',
+  'Топ-1 (доля бумаг)': 'Доля крупнейшей позиции в общей стоимости ценных бумаг.',
+  'Топ-5 (доля счёта)': 'Доля пяти крупнейших позиций в общей стоимости счета.',
+  'Топ-5 (доля бумаг)': 'Доля пяти крупнейших позиций в общей стоимости ценных бумаг.',
+  'Стоимость открытых позиций': 'Текущая рыночная стоимость всех открытых позиций.',
+  Позиции: 'Количество позиций, включенных в отчет.',
+  Классы: 'Количество различных классов активов в портфеле.',
+  Оценено: 'Количество позиций, для которых удалось определить рыночную стоимость.',
+  'Без оценки': 'Количество позиций без доступной рыночной стоимости.',
+  'Эфф. позиций': 'Эффективное число позиций с учетом того, насколько равномерно распределены веса.',
+  HHI: 'Индекс концентрации портфеля: чем он выше, тем сильнее портфель сосредоточен в крупных позициях.',
+  'Снимков портфеля': 'Количество отчетов со стоимостью счета, использованных для расчета динамики.',
+  'Периодов с денежными потоками': 'Количество периодов, по которым учтены изменения стоимости и денежные потоки.',
+  'Cumulative Return (TWR)': 'Совокупная доходность портфеля с поправкой на пополнения и выводы.',
+  TWR: 'Доходность портфеля с поправкой на пополнения и выводы.',
+  CAGR: 'Среднегодовой темп роста стоимости портфеля.',
+  'Annualized Return': 'Доходность портфеля, пересчитанная на год.',
+  'MWR / XIRR': 'Доходность с учетом суммы и времени пополнений и выводов.',
+  'Стандартное отклонение (год.)': 'Годовая волатильность доходности: мера колебаний стоимости портфеля.',
+  'Downside Deviation (год.)': 'Годовая мера колебаний доходности ниже целевого уровня.',
+  'Max Drawdown': 'Наибольшее падение стоимости портфеля от предыдущего пика.',
+  'Drawdown Duration': 'Продолжительность самого длинного периода восстановления после пика.',
+  'VaR 95% (период)': 'Оценка возможного убытка за период, который не превышался в 95% наблюдений.',
+  'CVaR 95% (период)': 'Средний убыток в худших 5% периодов.',
+  'Sharpe (безрисковая ставка 0%)': 'Доходность на единицу волатильности при безрисковой ставке 0%.',
+  'Sortino (целевая доходность 0%)': 'Доходность относительно риска падений при целевой доходности 0%.',
+  Calmar: 'Соотношение годовой доходности и максимальной просадки.',
+  'Omega (порог 0%)': 'Соотношение доходов выше нуля к убыткам ниже нуля.',
+  'Бенчмарк (FRED)': 'Справочная динамика индекса S&P 500 для сравнения с портфелем.',
+  Alpha: 'Разница совокупной доходности портфеля и индекса S&P 500.',
+  Beta: 'Чувствительность доходности портфеля к движениям индекса S&P 500.',
+  'R²': 'Показывает, насколько изменения индекса объясняют динамику портфеля.',
+  'Tracking Error': 'Волатильность разницы доходности портфеля и индекса.',
+  'Information Ratio': 'Избыточная доходность относительно индекса на единицу Tracking Error.',
+  'Upside/Downside Capture': 'Сравнение реакции портфеля с индексом на рост и падение рынка.',
+  'Active Share': 'Доля портфеля, отличающаяся от состава индекса.',
+  Treynor: 'Избыточная доходность портфеля на единицу рыночного риска (бета).',
+  'Jensen’s Alpha': 'Доходность портфеля сверх ожидаемой с учетом рыночного риска.',
+  'Alpha Fama–French': 'Избыточная доходность после учета факторов модели Fama–French.',
+  'Brinson Allocation': 'Вклад выбора классов активов в разницу с доходностью индекса.',
+  'Brinson Selection': 'Вклад выбора отдельных активов в разницу с доходностью индекса.',
+  'Contribution to Return': 'Вклад отдельных позиций в общую доходность портфеля.',
+  'Yield on Cost': 'Дивидендная доходность относительно первоначальной стоимости покупки.',
+  'Текущая дивидендная доходность': 'Ожидаемые дивиденды относительно текущей рыночной стоимости.',
+  'Секторная экспозиция': 'Распределение портфеля по секторам компаний.',
+  'Страновая экспозиция': 'Распределение портфеля по странам.',
+  'Валютная экспозиция': 'Распределение активов портфеля по валютам.',
+  'Win Rate': 'Доля прибыльных закрытых сделок среди всех закрытых сделок.',
+  'Profit Factor': 'Прибыль от выигрышных сделок относительно убытков от проигрышных.',
+  'Payoff Ratio': 'Средняя прибыльная сделка относительно средней убыточной.',
+  Expectancy: 'Средний ожидаемый результат одной сделки.',
+  'Turnover Rate': 'Объем сделок относительно средней стоимости счета.',
+  'Fee / Tax Drag': 'Суммарное влияние комиссий и налогов на результат.',
+  'Средневзвешенный P/E': 'Среднее отношение цены акций к прибыли компаний с учетом долей в портфеле.',
+  'Средневзвешенный P/S': 'Среднее отношение цены акций к выручке компаний с учетом долей в портфеле.',
+  'Средневзвешенный P/B': 'Среднее отношение цены акций к балансовой стоимости с учетом долей в портфеле.',
+  'Средневзвешенный EV/EBITDA': 'Среднее отношение стоимости компаний к EBITDA с учетом долей в портфеле.',
+  'Средневзвешенный ROE': 'Средняя рентабельность собственного капитала компаний с учетом долей в портфеле.',
+  'Средневзвешенный Debt/Equity': 'Среднее отношение долга к капиталу компаний с учетом долей в портфеле.',
+};
+
+function getMetricDescription(label: string) {
+  const description = METRIC_DESCRIPTIONS[label];
+  if (description) {
+    return description;
+  }
+  if (/^Доля /.test(label)) {
+    return 'Доля стоимости этой позиции в счете или в общей стоимости позиций.';
+  }
+  if (/^Макс\./.test(label)) {
+    return 'Стоимость крупнейшей позиции и ее доля в счете или в общей стоимости позиций.';
+  }
+  if (/комисс|налог/i.test(label)) {
+    return 'Сумма комиссий или налогов, указанная в отчете за период.';
+  }
+  if (/дивиденд/i.test(label)) {
+    return 'Дивидендный показатель, рассчитанный или указанный в отчете.';
+  }
+  if (/доходност|return|profit|p.?l|прибыл|убыток/i.test(label)) {
+    return 'Показатель доходности или финансового результата, указанный в отчете.';
+  }
+  return 'Дополнительный показатель из отчета XTB; значение приведено по данным отчета.';
+}
 
 function splitPrimaryMetrics(metrics: Metric[]) {
   const primaryMetrics: Metric[] = [];
@@ -366,6 +477,7 @@ function formatPeriod(report: ImportedReport) {
 }
 
 export default function HomeScreen() {
+  const [selectedMetric, setSelectedMetric] = useState<Metric | null>(null);
   const { reports } = useSessionReports();
   const sortedReports = reports
     .slice()
@@ -774,14 +886,23 @@ export default function HomeScreen() {
                   </ThemedText>
                   <View style={styles.metricList}>
                     {primaryMetrics.map((metric, index) => (
-                      <View key={`${metric.label}-${index}`} style={styles.metricRow}>
+                      <Pressable
+                        key={`${metric.label}-${index}`}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${SHORT_METRIC_LABELS[metric.label] ?? metric.label}, ${metric.value}`}
+                        accessibilityHint="Открыть описание показателя"
+                        onPress={() => setSelectedMetric(metric)}
+                        style={({ pressed }) => [
+                          styles.metricRow,
+                          pressed && styles.metricPressed,
+                        ]}>
                         <ThemedText type="small" style={styles.metricLabel}>
                           {SHORT_METRIC_LABELS[metric.label] ?? metric.label}
                         </ThemedText>
                         <ThemedText type="small" style={styles.metricValue}>
                           {metric.value}
                         </ThemedText>
-                      </View>
+                      </Pressable>
                     ))}
                   </View>
                 </View>
@@ -799,14 +920,23 @@ export default function HomeScreen() {
                   </ThemedText>
                   <View style={styles.metricList}>
                     {otherMetrics.map((metric, index) => (
-                      <View key={`${metric.label}-${index}`} style={styles.metricRow}>
+                      <Pressable
+                        key={`${metric.label}-${index}`}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${SHORT_METRIC_LABELS[metric.label] ?? metric.label}, ${metric.value}`}
+                        accessibilityHint="Открыть описание показателя"
+                        onPress={() => setSelectedMetric(metric)}
+                        style={({ pressed }) => [
+                          styles.metricRow,
+                          pressed && styles.metricPressed,
+                        ]}>
                         <ThemedText type="small" style={styles.metricLabel}>
                           {SHORT_METRIC_LABELS[metric.label] ?? metric.label}
                         </ThemedText>
                         <ThemedText type="small" style={styles.metricValue}>
                           {metric.value}
                         </ThemedText>
-                      </View>
+                      </Pressable>
                     ))}
                   </View>
                 </View>
@@ -815,6 +945,28 @@ export default function HomeScreen() {
           )}
         </ScrollView>
       </SafeAreaView>
+      <Modal
+        animationType="fade"
+        transparent
+        visible={selectedMetric !== null}
+        onRequestClose={() => setSelectedMetric(null)}>
+        <View style={styles.modalBackdrop}>
+          <ThemedView type="backgroundElement" style={styles.metricDialog}>
+            <ThemedText type="subtitle" style={styles.metricDialogTitle}>
+              {selectedMetric?.label}
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {selectedMetric ? getMetricDescription(selectedMetric.label) : ''}
+            </ThemedText>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setSelectedMetric(null)}
+              style={styles.closeButton}>
+              <ThemedText type="smallBold">Закрыть</ThemedText>
+            </Pressable>
+          </ThemedView>
+        </View>
+      </Modal>
     </ThemedView>
   );
 }
@@ -875,5 +1027,32 @@ const styles = StyleSheet.create({
   metricValue: {
     flex: 1,
     textAlign: 'right',
+  },
+  metricPressed: {
+    opacity: 0.65,
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: Spacing.four,
+    backgroundColor: '#00000066',
+  },
+  metricDialog: {
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 420,
+    gap: Spacing.three,
+    padding: Spacing.four,
+    borderRadius: Spacing.four,
+  },
+  metricDialogTitle: {
+    fontSize: 22,
+    lineHeight: 28,
+  },
+  closeButton: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.one,
   },
 });
