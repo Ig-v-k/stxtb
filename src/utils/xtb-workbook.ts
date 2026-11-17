@@ -364,6 +364,8 @@ export function parseXtbWorkbook(
 
   if (cashTable) {
     const operationTotals = new Map<string, number>();
+    let totalIncome = 0;
+    let tradedValue = 0;
     for (const row of cashTable.rows) {
       const type = String(getCell(row, cashTable.headers, 'Type') ?? '').trim();
       const amount = toNumber(getCell(row, cashTable.headers, 'Amount'));
@@ -375,11 +377,11 @@ export function parseXtbWorkbook(
       const label =
         /dividend|дивиденд/.test(normalizedType)
           ? 'Дивиденды'
-          : /withholding tax|tax|налог/.test(normalizedType)
+          : /withholding tax|interest tax|tax|налог/.test(normalizedType)
             ? 'Налоги'
             : /free funds interest|interest|процент/.test(normalizedType)
               ? 'Проценты на свободные средства'
-              : /commission|fee|комисси/.test(normalizedType)
+              : /commission|fee|sec fee|stamp duty|комисси|сбор/.test(normalizedType)
                 ? 'Комиссии'
                 : /deposit|top.?up|transfer in|пополн|внесени/.test(normalizedType)
                   ? 'Пополнения'
@@ -391,11 +393,19 @@ export function parseXtbWorkbook(
       if (label) {
         operationTotals.set(label, (operationTotals.get(label) ?? 0) + amount);
       }
+      if (/^(?:dividend|free funds interest|interest)$/.test(normalizedType)) {
+        totalIncome += amount;
+      }
+      if (/^(?:stock purchase|stock sell)$/.test(normalizedType)) {
+        tradedValue += Math.abs(amount);
+      }
     }
 
     for (const [label, amount] of operationTotals) {
       addStatistic(statistics, label, formatMoney(amount, accountCurrency));
     }
+    addStatistic(statistics, 'Общий доход', formatMoney(totalIncome, accountCurrency));
+    addStatistic(statistics, 'Объем сделок', formatMoney(tradedValue, accountCurrency));
   }
 
   if (closedTable) {

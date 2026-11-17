@@ -1,5 +1,6 @@
 import type { ImportedReport } from './imported-files';
 import { parseStatisticNumber } from './statement-stats';
+import type { BenchmarkData, MarketDataPoint } from './benchmark-data';
 
 export type Metric = { label: string; value: string };
 
@@ -88,6 +89,11 @@ function getSnapshots(reports: ImportedReport[], currency?: string) {
   return Array.from(uniqueSnapshots.values());
 }
 
+export function hasBenchmarkHistory(reports: ImportedReport[], currency?: string) {
+  const snapshots = getSnapshots(reports, currency);
+  return snapshots.length >= 2 && getReturnPeriods(snapshots) !== null;
+}
+
 function getReturnPeriods(snapshots: Snapshot[]): ReturnPeriod[] | null {
   const periods: ReturnPeriod[] = [];
   for (let index = 1; index < snapshots.length; index += 1) {
@@ -122,6 +128,258 @@ function getReturnPeriods(snapshots: Snapshot[]): ReturnPeriod[] | null {
     });
   }
   return periods;
+}
+
+const BENCHMARK_METRIC_LABELS = [
+  'Alpha',
+  'Beta',
+  'R²',
+  'Tracking Error',
+  'Information Ratio',
+  'Upside/Downside Capture',
+  'Active Share',
+  'Treynor',
+  'Jensen’s Alpha',
+  'Alpha Fama–French',
+  'Brinson Allocation',
+  'Brinson Selection',
+];
+
+function lastPointOnOrBefore(points: MarketDataPoint[], date: string) {
+  let match: MarketDataPoint | undefined;
+  for (const point of points) {
+    if (point.date > date) {
+      break;
+    }
+    match = point;
+  }
+  return match;
+}
+
+function benchmarkMetric(
+  label: string,
+  value: number | null,
+  format: (value: number) => string
+): Metric {
+  return {
+    label,
+    value: value === null || !Number.isFinite(value) ? '—' : format(value),
+  };
+}
+
+export function getBenchmarkMetrics(
+  reports: ImportedReport[],
+  currency: string | undefined,
+  benchmarkData: BenchmarkData | null,
+  loading: boolean,
+  error: string | null,
+  stale: boolean
+): Metric[] {
+  const unavailable = (reason: string) =>
+    BENCHMARK_METRIC_LABELS.map((label) => ({ label, value: reason }));
+  const snapshots = getSnapshots(reports, currency);
+  const statusMetric: Metric = {
+    label: 'Бенчмарк (FRED)',
+    value: benchmarkData
+      ? `S&P 500 · по ${benchmarkData.prices[benchmarkData.prices.length - 1].date}${
+          stale ? ' · устаревший локальный кэш' : ''
+        }`
+      : loading
+        ? 'Загрузка общедоступных рядов'
+        : error
+          ? `Недоступен: ${error}`
+          : currency === 'USD'
+            ? 'S&P 500 · ценовой индекс'
+            : 'Доступен только для счетов в USD',
+  };
+
+  if (snapshots.length < 2) {
+    return [
+      statusMetric,
+      ...unavailable('— (нужны минимум 2 снимка стоимости счёта и данные о денежных потоках)'),
+    ];
+  }
+
+  const periods = getReturnPeriods(snapshots);
+  if (!periods || periods.length === 0) {
+    return [
+      statusMetric,
+      ...unavailable('— (нужна непрерывная история снимков и пополнений/выводов)'),
+    ];
+  }
+  if (!benchmarkData) {
+    const reason = loading
+      ? '— (загрузка бенчмарка)'
+      : `— (${
+          currency !== 'USD'
+            ? 'для бенчмарка нужен счёт в USD'
+            : error
+              ? `FRED недоступен: ${error}`
+              : 'нет данных бенчмарка'
+        })`;
+    return [statusMetric, ...unavailable(reason)];
+  }
+
+  const observations = periods.flatMap((period) => {
+    const start = lastPointOnOrBefore(benchmarkData.prices, period.start);
+    const end = lastPointOnOrBefore(benchmarkData.prices, period.end);
+    const annualRate = lastPointOnOrBefore(benchmarkData.riskFreeRates, period.end);
+    if (!start || !end || !annualRate || start.value <= 0 || end.value <= 0) {
+      return [];
+    }
+    const marketReturn = end.value / start.value - 1;
+    const riskFreeReturn = (annualRate.value / 100) * (period.days / 365);
+    return Number.isFinite(marketReturn) && Number.isFinite(riskFreeReturn)
+      ? [{ portfolioReturn: period.value, marketReturn, riskFreeReturn, days: period.days }]
+      : [];
+  });
+  const coverageStatusMetric: Metric = {
+    ...statusMetric,
+    value: `${statusMetric.value} · покрытие ${observations.length}/${periods.length} периодов`,
+  };
+  if (observations.length === 0) {
+    return [
+      coverageStatusMetric,
+      ...unavailable('— (нет пересечения дат истории портфеля и ряда FRED; S&P 500 доступен с 2016 года)'),
+    ];
+  }
+
+  const portfolioReturns = observations.map((item) => item.portfolioReturn);
+  const marketReturns = observations.map((item) => item.marketReturn);
+  const activeReturns = observations.map(
+    (item) => item.portfolioReturn - item.marketReturn
+  );
+  const averagePeriodDays =
+    observations.reduce((sum, item) => sum + item.days, 0) / observations.length;
+  const periodsPerYear = 365 / averagePeriodDays;
+  const portfolioGrowth = portfolioReturns.reduce((growth, value) => growth * (1 + value), 1);
+  const marketGrowth = marketReturns.reduce((growth, value) => growth * (1 + value), 1);
+  const meanPortfolio = portfolioReturns.reduce((sum, value) => sum + value, 0) / observations.length;
+  const meanMarket = marketReturns.reduce((sum, value) => sum + value, 0) / observations.length;
+  const covariance =
+    observations.length > 1
+      ? observations.reduce(
+          (sum, item) =>
+            sum + (item.portfolioReturn - meanPortfolio) * (item.marketReturn - meanMarket),
+          0
+        ) / (observations.length - 1)
+      : null;
+  const marketDeviation = standardDeviation(marketReturns);
+  const portfolioDeviation = standardDeviation(portfolioReturns);
+  const sampleMarketVariance = marketDeviation ? marketDeviation ** 2 : 0;
+  const beta =
+    covariance !== null && sampleMarketVariance > 0
+      ? covariance / sampleMarketVariance
+      : null;
+  const correlation =
+    marketDeviation && portfolioDeviation && covariance !== null
+      ? covariance / (marketDeviation * portfolioDeviation)
+      : null;
+  const activeDeviation = standardDeviation(activeReturns);
+  const averageActiveReturn =
+    activeReturns.reduce((sum, value) => sum + value, 0) / activeReturns.length;
+  const riskAdjustedAlpha =
+    beta === null
+      ? null
+      : (observations.reduce(
+          (sum, item) =>
+            sum +
+            (item.portfolioReturn -
+              item.riskFreeReturn -
+              beta * (item.marketReturn - item.riskFreeReturn)),
+          0
+        ) /
+          observations.length) *
+        periodsPerYear;
+  const annualizedExcessReturn =
+    (observations.reduce(
+      (sum, item) => sum + item.portfolioReturn - item.riskFreeReturn,
+      0
+    ) /
+      observations.length) *
+    periodsPerYear;
+  const capture = (isUpside: boolean) => {
+    const selected = observations.filter((item) =>
+      isUpside ? item.marketReturn > 0 : item.marketReturn < 0
+    );
+    if (selected.length === 0) {
+      return null;
+    }
+    const portfolioGrowth = selected.reduce(
+      (growth, item) => growth * (1 + item.portfolioReturn),
+      1
+    );
+    const marketGrowth = selected.reduce(
+      (growth, item) => growth * (1 + item.marketReturn),
+      1
+    );
+    return marketGrowth === 1 ? null : (portfolioGrowth - 1) / (marketGrowth - 1);
+  };
+  const upsideCapture = capture(true);
+  const downsideCapture = capture(false);
+  const formats = {
+    ratio: (value: number) => formatNumber(value),
+    percent: (value: number) => formatPercent(value),
+  };
+  const historyNote =
+    observations.length < periods.length
+      ? ` · ${observations.length}/${periods.length} периодов с данными бенчмарка`
+      : '';
+  const metrics = [
+    benchmarkMetric(
+      'Alpha',
+      portfolioGrowth - marketGrowth,
+      (value) => `${formatPercent(value)}${historyNote}`
+    ),
+    benchmarkMetric('Beta', beta, formats.ratio),
+    benchmarkMetric(
+      'R²',
+      correlation === null ? null : Math.min(1, Math.max(0, correlation ** 2)),
+      formats.ratio
+    ),
+    benchmarkMetric(
+      'Tracking Error',
+      activeDeviation === null ? null : activeDeviation * Math.sqrt(periodsPerYear),
+      formats.percent
+    ),
+    benchmarkMetric(
+      'Information Ratio',
+      activeDeviation && activeDeviation > 0
+        ? (averageActiveReturn / activeDeviation) * Math.sqrt(periodsPerYear)
+        : null,
+      formats.ratio
+    ),
+    {
+      label: 'Upside/Downside Capture',
+      value: `${upsideCapture === null ? '—' : formatPercent(upsideCapture)} / ${
+        downsideCapture === null ? '—' : formatPercent(downsideCapture)
+      }`,
+    },
+    {
+      label: 'Active Share',
+      value: '— (нужны веса бумаг и состав бенчмарка; тикеры не отправляются наружу)',
+    },
+    benchmarkMetric(
+      'Treynor',
+      beta && beta !== 0 ? annualizedExcessReturn / beta : null,
+      formats.percent
+    ),
+    benchmarkMetric('Jensen’s Alpha', riskAdjustedAlpha, formats.percent),
+    {
+      label: 'Alpha Fama–French',
+      value: '— (нужны ряды факторов Fama–French)',
+    },
+    {
+      label: 'Brinson Allocation',
+      value: '— (нужны секторные веса портфеля и бенчмарка)',
+    },
+    {
+      label: 'Brinson Selection',
+      value: '— (нужны доходности и секторные веса бумаг)',
+    },
+  ];
+
+  return [coverageStatusMetric, ...metrics];
 }
 
 function standardDeviation(values: number[]) {

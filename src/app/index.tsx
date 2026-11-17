@@ -4,9 +4,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useBenchmarkData } from '@/hooks/use-benchmark-data';
 import { useSessionReports } from '@/hooks/use-session-reports';
 import type { ImportedReport, StatementPosition } from '@/utils/imported-files';
-import { getDynamicMetrics, type Metric } from '@/utils/portfolio-metrics';
+import {
+  getBenchmarkMetrics,
+  getDynamicMetrics,
+  hasBenchmarkHistory,
+  type Metric,
+} from '@/utils/portfolio-metrics';
 import { parseStatisticNumber } from '@/utils/statement-stats';
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
@@ -15,21 +21,6 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
   '£': 'GBP',
   '₽': 'RUB',
 };
-
-const BENCHMARK_METRICS = [
-  'Alpha',
-  'Beta',
-  'R²',
-  'Tracking Error',
-  'Information Ratio',
-  'Upside/Downside Capture',
-  'Active Share',
-  'Treynor',
-  'Jensen’s Alpha',
-  'Alpha Fama–French',
-  'Brinson Allocation',
-  'Brinson Selection',
-];
 
 const SHORT_METRIC_LABELS: Record<string, string> = {
   'Стоимость счета': 'Счёт',
@@ -41,6 +32,8 @@ const SHORT_METRIC_LABELS: Record<string, string> = {
   'Обеспечение': 'Обесп.',
   'Прибыль / убыток': 'P&L',
   'Дивиденды': 'Див.',
+  'Общий доход': 'Доход',
+  'Объем сделок': 'Оборот',
   'Пополнения': 'Пополн.',
   'Комиссии': 'Комис.',
   'Изменение счёта': 'Δ счёта',
@@ -73,6 +66,7 @@ const SHORT_METRIC_LABELS: Record<string, string> = {
   'Alpha Fama–French': 'F-F α',
   'Brinson Allocation': 'Brinson Alloc.',
   'Brinson Selection': 'Brinson Sel.',
+  'Бенчмарк (FRED)': 'Бенчмарк',
   'Contribution to Return': 'CTR',
   'Yield on Cost': 'YoC',
   'Текущая дивидендная доходность': 'Тек. див. доход.',
@@ -318,6 +312,13 @@ export default function HomeScreen() {
       return secondEnd.localeCompare(firstEnd);
     });
   const latestReport = sortedReports[0];
+  const benchmarkState = useBenchmarkData(
+    Boolean(
+      latestReport &&
+        latestReport.accountCurrency === 'USD' &&
+        hasBenchmarkHistory(sortedReports, latestReport.accountCurrency)
+    )
+  );
   const positions = latestReport?.positions ?? [];
   const metricGroups: Metric[][] = [];
 
@@ -481,6 +482,7 @@ export default function HomeScreen() {
       .filter(
         (statistic) =>
           !displayedStatisticLabels.has(statistic.label) &&
+          !['Общий доход', 'Объем сделок'].includes(statistic.label) &&
           !/^(?:unrealized|realized)\s+p.?l(?:\s*\(%\))?$|^(?:win rate|profit factor|payoff ratio|expectancy)$/i.test(
             statistic.label
           )
@@ -506,6 +508,10 @@ export default function HomeScreen() {
               : ''
           }`
         : 'Н/Д';
+    const tradedValue = getStatistic(latestReport, 'Объем сделок');
+    const turnoverRate = tradedValue
+      ? `${formatStatisticValue(tradedValue.value, latestReport.accountCurrency)} · — (нет средней стоимости счёта)`
+      : '— (нет данных об обороте сделок)';
     const dryMetrics: Metric[] = [
       getSourceMetric(
         latestReport,
@@ -575,7 +581,7 @@ export default function HomeScreen() {
       getSourceMetric(latestReport, 'Expectancy', /^expectancy$/i, latestReport.accountCurrency),
       {
         label: 'Turnover Rate',
-        value: '— (нужны объем сделок и средняя стоимость портфеля)',
+        value: turnoverRate,
       },
       {
         label: 'Fee / Tax Drag',
@@ -630,10 +636,16 @@ export default function HomeScreen() {
     ...(latestReport
       ? getDynamicMetrics(sortedReports, latestReport.accountCurrency)
       : []),
-    ...BENCHMARK_METRICS.map((label) => ({
-      label,
-      value: '— (нужны данные бенчмарка)',
-    })),
+    ...(latestReport
+      ? getBenchmarkMetrics(
+          sortedReports,
+          latestReport.accountCurrency,
+          benchmarkState.data,
+          benchmarkState.loading,
+          benchmarkState.error,
+          benchmarkState.stale
+        )
+      : []),
   ];
 
   return (
