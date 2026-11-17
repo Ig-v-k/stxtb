@@ -32,10 +32,17 @@ const SHORT_METRIC_LABELS: Record<string, string> = {
   'Account Value': 'Счёт',
   'Net Asset Value': 'Счёт',
   Equity: 'Счёт',
+  'Unrealized PnL': 'Откр. результат',
+  'Unrealized PnL (%)': 'Откр. результат %',
+  'Realized PnL': 'Closed P&L',
+  'Realized PnL (%)': 'Closed P&L %',
+  'Стоимость открытых позиций': 'Откр. позиции',
+  'Закрытых сделок': 'Сделки',
   'Свободные средства': 'Св. средства',
   'Обеспечение': 'Обесп.',
   'Прибыль / убыток': 'P&L',
   'Дивиденды': 'Див.',
+  'Проценты на свободные средства': 'Проц. св. ср-в',
   'Общий доход': 'Доход',
   'Объем сделок': 'Оборот',
   'Пополнения': 'Пополн.',
@@ -45,51 +52,87 @@ const SHORT_METRIC_LABELS: Record<string, string> = {
   'Доля бумаг в счёте': 'Бумаги / счёт',
   'Оценено': 'Оцен.',
   'Эфф. позиций': 'Эфф. поз.',
-  'Топ-3 (доля счёта)': 'Топ-3 (сч.)',
-  'Топ-3 (доля бумаг)': 'Топ-3 (поз.)',
-  'Топ-1 (доля счёта)': 'Топ-1 (сч.)',
-  'Топ-1 (доля бумаг)': 'Топ-1 (поз.)',
-  'Топ-5 (доля счёта)': 'Топ-5 (сч.)',
-  'Топ-5 (доля бумаг)': 'Топ-5 (поз.)',
+  'Топ-3 (доля счёта)': 'Топ-3 счёта, %',
+  'Топ-3 (доля бумаг)': 'Топ-3 бумаг, %',
+  'Топ-1 (доля счёта)': 'Топ-1 счёта, %',
+  'Топ-1 (доля бумаг)': 'Топ-1 бумаг, %',
+  'Топ-5 (доля счёта)': 'Топ-5 счёта, %',
+  'Топ-5 (доля бумаг)': 'Топ-5 бумаг, %',
   'Без оценки': 'Без цены',
-  'Периодов с денежными потоками': 'Периодов',
-  'Cumulative Return (TWR)': 'TWR (итого)',
+  'Периодов с денежными потоками': 'Периоды',
+  'Cumulative Return (TWR)': 'Доходность TWR',
   'Annualized Return': 'Год. доходность',
   'Стандартное отклонение (год.)': 'σ (год.)',
-  'Downside Deviation (год.)': 'Downside Dev. (год.)',
-  'Max Drawdown': 'Max DD',
-  'Drawdown Duration': 'DD Duration',
-  'Sharpe (безрисковая ставка 0%)': 'Sharpe (Rf=0%)',
+  'Downside Deviation (год.)': 'Downside σ год.',
+  'Max Drawdown': 'Макс. просадка',
+  'Drawdown Duration': 'DD (дни)',
+  'Sharpe (безрисковая ставка 0%)': 'Sharpe (Rf 0%)',
   'Sortino (целевая доходность 0%)': 'Sortino (0%)',
   'Omega (порог 0%)': 'Omega (0%)',
-  'Снимков портфеля': 'Снимки',
+  'Снимков портфеля': 'Снимки стоимости',
   'Tracking Error': 'TE',
   'Information Ratio': 'IR',
-  'Upside/Downside Capture': 'Up/Down Capture',
+  'Upside/Downside Capture': 'Capture ↑/↓',
   'Jensen’s Alpha': 'Jensen α',
   'Alpha Fama–French': 'F-F α',
   'Brinson Allocation': 'Brinson Alloc.',
   'Brinson Selection': 'Brinson Sel.',
   'Бенчмарк (FRED)': 'Бенчмарк',
-  'Contribution to Return': 'CTR',
+  'Contribution to Return': 'Вклад в доход',
   'Yield on Cost': 'YoC',
-  'Текущая дивидендная доходность': 'Тек. див. доход.',
+  'Текущая дивидендная доходность': 'Див. доходн.',
   'Секторная экспозиция': 'Сектор',
   'Страновая экспозиция': 'Страна',
   'Валютная экспозиция': 'Валюта',
   'Win Rate': 'Win %',
-  'Profit Factor': 'PF',
+  'Profit Factor': 'Фактор прибыли',
   'Payoff Ratio': 'Payoff',
-  'Expectancy': 'Expect.',
-  'Turnover Rate': 'Turnover',
-  'Fee / Tax Drag': 'Fee/Tax',
+  'Expectancy': 'Среднее на сделку',
+  'Turnover Rate': 'Оборот',
+  'Fee / Tax Drag': 'Комис./налог',
   'Средневзвешенный P/E': 'Взвеш. P/E',
   'Средневзвешенный P/S': 'Взвеш. P/S',
   'Средневзвешенный P/B': 'Взвеш. P/B',
   'Средневзвешенный EV/EBITDA': 'Взвеш. EV/EBITDA',
   'Средневзвешенный ROE': 'Взвеш. ROE',
   'Средневзвешенный Debt/Equity': 'Взвеш. D/E',
+  'MWR / XIRR': 'MWR (XIRR)',
+  'VaR 95% (период)': 'VaR 95%',
+  'CVaR 95% (период)': 'CVaR 95%',
 };
+
+const PRIMARY_METRIC_PATTERNS = [
+  /^(?:Снимков портфеля|Периодов с денежными потоками)$/i,
+  /^(?:Стоимость сч[её]та|Account Value|Net Asset Value|Equity)$/i,
+  /^(?:Cumulative Return \(TWR\)|Annualized Return|CAGR)$/i,
+  /^Max Drawdown$/i,
+  /^Топ-3 \(доля (?:счёта|бумаг)\)$/i,
+  /^Unrealized PnL \(%\)$/i,
+  /^Unrealized PnL$/i,
+  /^Profit Factor$/i,
+  /^Закрытых сделок$/i,
+  /^Expectancy$/i,
+];
+
+function splitPrimaryMetrics(metrics: Metric[]) {
+  const primaryMetrics: Metric[] = [];
+  const selectedMetrics = new Set<Metric>();
+
+  for (const pattern of PRIMARY_METRIC_PATTERNS) {
+    const metric = metrics.find(
+      (candidate) => !selectedMetrics.has(candidate) && pattern.test(candidate.label)
+    );
+    if (metric) {
+      primaryMetrics.push(metric);
+      selectedMetrics.add(metric);
+    }
+  }
+
+  return {
+    primaryMetrics,
+    otherMetrics: metrics.filter((metric) => !selectedMetrics.has(metric)),
+  };
+}
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value);
@@ -137,7 +180,10 @@ function getSourceMetric(
           : `${formatNumber(value)}${statistic.value.includes('%') ? '' : '%'}`,
     };
   }
-  return { label, value: formatStatisticValue(statistic.value, currency) };
+  return {
+    label,
+    value: formatStatisticValue(statistic.value, currency, statistic.label),
+  };
 }
 
 function getPositionAnalysis(
@@ -282,10 +328,23 @@ function getPositionAnalysis(
   };
 }
 
-function formatStatisticValue(value: string, currency?: string) {
+function formatStatisticValue(value: string, currency?: string, label?: string) {
   const hasCurrency =
     /\b(?:USD|EUR|GBP|RUB|PLN|CZK|HUF|CHF|JPY|CAD|AUD|HKD|USDT)\b|[$€£₽]/i.test(value);
-  if (!currency || hasCurrency) {
+  const hasPercent = /%|percent|процент/i.test(value);
+  const numericValue = parseStatisticNumber(value);
+  const isNumeric = numericValue !== null;
+  const isPercentage = /%|percent|процент|доходност|return|volatility|deviation|drawdown|capture|alpha/i.test(
+    label ?? ''
+  );
+  const isMonetary = /p.?n.?l|profit|loss|income|dividend|deposit|withdraw|cash|balance|equity|account value|net asset value|collateral|margin|fee|commission|swap|turnover|volume|cost|expectancy|price|amount|tax|стоимост|баланс|прибыл|убыт|доход|дивиденд|пополн|вывод|средств|обеспеч|комис|своп|оборот|объем|налог/i.test(
+    label ?? ''
+  );
+
+  if (isPercentage && numericValue !== null && !hasPercent) {
+    return `${formatNumber(numericValue)}%`;
+  }
+  if (!isNumeric || hasCurrency || hasPercent || isPercentage || !isMonetary || !currency) {
     return value;
   }
   return `${value} (${currency})`;
@@ -363,7 +422,11 @@ export default function HomeScreen() {
     if (accountValue) {
       accountMetrics.push({
         label: accountValue.label,
-        value: formatStatisticValue(accountValue.value, latestReport.accountCurrency),
+        value: formatStatisticValue(
+          accountValue.value,
+          latestReport.accountCurrency,
+          accountValue.label
+        ),
       });
     }
     for (const label of ['Баланс', 'Свободные средства', 'Обеспечение']) {
@@ -371,7 +434,11 @@ export default function HomeScreen() {
       if (statistic && statistic !== accountValue) {
         accountMetrics.push({
           label: statistic.label,
-          value: formatStatisticValue(statistic.value, latestReport.accountCurrency),
+          value: formatStatisticValue(
+            statistic.value,
+            latestReport.accountCurrency,
+            statistic.label
+          ),
         });
       }
     }
@@ -408,7 +475,11 @@ export default function HomeScreen() {
       if (statistic) {
         resultMetrics.push({
           label: statistic.label,
-          value: formatStatisticValue(statistic.value, latestReport.accountCurrency),
+          value: formatStatisticValue(
+            statistic.value,
+            latestReport.accountCurrency,
+            statistic.label
+          ),
         });
       }
     }
@@ -493,7 +564,11 @@ export default function HomeScreen() {
       )
       .map((statistic) => ({
         label: statistic.label,
-        value: formatStatisticValue(statistic.value, latestReport.accountCurrency),
+        value: formatStatisticValue(
+          statistic.value,
+          latestReport.accountCurrency,
+          statistic.label
+        ),
       }));
 
     const fee = getStatisticMatching(latestReport, /комисси|commission|^fees?$/i);
@@ -514,7 +589,11 @@ export default function HomeScreen() {
         : 'Н/Д';
     const tradedValue = getStatistic(latestReport, 'Объем сделок');
     const turnoverRate = tradedValue
-      ? `${formatStatisticValue(tradedValue.value, latestReport.accountCurrency)} · — (нет средней стоимости счёта)`
+      ? `${formatStatisticValue(
+          tradedValue.value,
+          latestReport.accountCurrency,
+          tradedValue.label
+        )} · — (нет средней стоимости счёта)`
       : '— (нет данных об обороте сделок)';
     const dryMetrics: Metric[] = [
       getSourceMetric(
@@ -652,6 +731,7 @@ export default function HomeScreen() {
       : []),
   ];
   const availableMetrics = metrics.filter((metric) => isMetricValueAvailable(metric.value));
+  const { primaryMetrics, otherMetrics } = splitPrimaryMetrics(availableMetrics);
 
   return (
     <ThemedView style={styles.screen}>
@@ -684,29 +764,53 @@ export default function HomeScreen() {
             </View>
           ) : (
             <View style={styles.dashboard}>
-              <View style={styles.section}>
-                <ThemedText
-                  type="smallBold"
-                  themeColor="textSecondary"
-                  style={styles.sectionTitle}>
-                  ПОКАЗАТЕЛИ
-                </ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  Доступно метрик: {availableMetrics.length}
-                </ThemedText>
-                <View style={styles.metricList}>
-                  {availableMetrics.map((metric, index) => (
-                    <View key={`${metric.label}-${index}`} style={styles.metricRow}>
-                      <ThemedText type="small" style={styles.metricLabel}>
-                        {SHORT_METRIC_LABELS[metric.label] ?? metric.label}
-                      </ThemedText>
-                      <ThemedText type="small" style={styles.metricValue}>
-                        {metric.value}
-                      </ThemedText>
-                    </View>
-                  ))}
+              {primaryMetrics.length > 0 && (
+                <View style={styles.section}>
+                  <ThemedText
+                    type="smallBold"
+                    themeColor="textSecondary"
+                    style={styles.sectionTitle}>
+                    ГЛАВНОЕ
+                  </ThemedText>
+                  <View style={styles.metricList}>
+                    {primaryMetrics.map((metric, index) => (
+                      <View key={`${metric.label}-${index}`} style={styles.metricRow}>
+                        <ThemedText type="small" style={styles.metricLabel}>
+                          {SHORT_METRIC_LABELS[metric.label] ?? metric.label}
+                        </ThemedText>
+                        <ThemedText type="small" style={styles.metricValue}>
+                          {metric.value}
+                        </ThemedText>
+                      </View>
+                    ))}
+                  </View>
                 </View>
-              </View>
+              )}
+              {otherMetrics.length > 0 && (
+                <View style={styles.section}>
+                  <ThemedText
+                    type="smallBold"
+                    themeColor="textSecondary"
+                    style={styles.sectionTitle}>
+                    ПОДРОБНЫЕ ПОКАЗАТЕЛИ
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Всего доступно метрик: {availableMetrics.length}
+                  </ThemedText>
+                  <View style={styles.metricList}>
+                    {otherMetrics.map((metric, index) => (
+                      <View key={`${metric.label}-${index}`} style={styles.metricRow}>
+                        <ThemedText type="small" style={styles.metricLabel}>
+                          {SHORT_METRIC_LABELS[metric.label] ?? metric.label}
+                        </ThemedText>
+                        <ThemedText type="small" style={styles.metricValue}>
+                          {metric.value}
+                        </ThemedText>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
             </View>
           )}
         </ScrollView>
