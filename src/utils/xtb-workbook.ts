@@ -236,6 +236,95 @@ function getXtbSheetRows(workbook: XLSX.WorkBook) {
   return rowsByName;
 }
 
+// Some XLSX exports leave zero sizes in local ZIP headers despite valid central-directory sizes.
+function repairZeroLocalZipSizes(bytes: Uint8Array) {
+  const endOfCentralDirectorySignature = [0x50, 0x4b, 0x05, 0x06];
+  const centralDirectorySignature = [0x50, 0x4b, 0x01, 0x02];
+  const localFileSignature = [0x50, 0x4b, 0x03, 0x04];
+  const hasSignature = (offset: number, signature: number[]) =>
+    signature.every((value, byteIndex) => bytes[offset + byteIndex] === value);
+  const minEndOffset = Math.max(0, bytes.length - 22 - 0xffff);
+  let endOffset = -1;
+
+  for (let offset = bytes.length - 22; offset >= minEndOffset; offset -= 1) {
+    if (hasSignature(offset, endOfCentralDirectorySignature)) {
+      endOffset = offset;
+      break;
+    }
+  }
+  if (endOffset < 0 || endOffset + 22 > bytes.length) {
+    return bytes;
+  }
+
+  const readUint16 = (offset: number) => bytes[offset] | (bytes[offset + 1] << 8);
+  const readUint32 = (offset: number) =>
+    (bytes[offset] |
+      (bytes[offset + 1] << 8) |
+      (bytes[offset + 2] << 16) |
+      (bytes[offset + 3] << 24)) >>> 0;
+  const entryCount = readUint16(endOffset + 10);
+  let directoryOffset = readUint32(endOffset + 16);
+  const repaired = bytes.slice();
+  let changed = false;
+
+  for (let index = 0; index < entryCount; index += 1) {
+    if (
+      directoryOffset + 46 > bytes.length ||
+      !hasSignature(directoryOffset, centralDirectorySignature)
+    ) {
+      return bytes;
+    }
+
+    const flags = readUint16(directoryOffset + 8);
+    const compressedSize = readUint32(directoryOffset + 20);
+    const uncompressedSize = readUint32(directoryOffset + 24);
+    const nameLength = readUint16(directoryOffset + 28);
+    const extraLength = readUint16(directoryOffset + 30);
+    const commentLength = readUint16(directoryOffset + 32);
+    const localOffset = readUint32(directoryOffset + 42);
+    const nextDirectoryOffset =
+      directoryOffset + 46 + nameLength + extraLength + commentLength;
+
+    if (nextDirectoryOffset > bytes.length) {
+      return bytes;
+    }
+    directoryOffset = nextDirectoryOffset;
+
+    if (
+      flags & 0x8 ||
+      compressedSize === 0xffffffff ||
+      uncompressedSize === 0xffffffff ||
+      localOffset === 0xffffffff ||
+      localOffset + 30 > bytes.length ||
+      !hasSignature(localOffset, localFileSignature)
+    ) {
+      continue;
+    }
+
+    const localNameLength = readUint16(localOffset + 26);
+    const localExtraLength = readUint16(localOffset + 28);
+    if (localOffset + 30 + localNameLength + localExtraLength > bytes.length) {
+      continue;
+    }
+
+    for (const [fieldOffset, centralValue] of [
+      [18, compressedSize],
+      [22, uncompressedSize],
+    ]) {
+      if (readUint32(localOffset + fieldOffset) === 0 && centralValue !== 0) {
+        const offset = localOffset + fieldOffset;
+        repaired[offset] = centralValue & 0xff;
+        repaired[offset + 1] = (centralValue >>> 8) & 0xff;
+        repaired[offset + 2] = (centralValue >>> 16) & 0xff;
+        repaired[offset + 3] = (centralValue >>> 24) & 0xff;
+        changed = true;
+      }
+    }
+  }
+
+  return changed ? repaired : bytes;
+}
+
 export function parseXtbWorkbook(
   bytes: Uint8Array,
   name: string,
@@ -243,7 +332,10 @@ export function parseXtbWorkbook(
 ): ImportedReport {
   let workbook: XLSX.WorkBook;
   try {
-    workbook = XLSX.read(bytes, { type: 'array', cellDates: false });
+    workbook = XLSX.read(repairZeroLocalZipSizes(bytes), {
+      type: 'array',
+      cellDates: false,
+    });
   } catch {
     throw new Error('Не удалось прочитать XLSX. Проверьте, что это не поврежденный файл.');
   }
