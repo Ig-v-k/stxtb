@@ -49,15 +49,17 @@ export function PortfolioDashboard({
           showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <View style={styles.brandLine}>
+              <View style={styles.brandGroup}>
+                <Image
+                  source={require('@/assets/images/icon.png')}
+                  style={styles.logo}
+                  accessibilityLabel={messages.common.logo}
+                />
+                <ThemedText type="smallBold" themeColor="textSecondary">
+                  {messages.portfolio.brand}
+                </ThemedText>
+              </View>
               <SettingsButton />
-              <Image
-                source={require('@/assets/images/icon.png')}
-                style={styles.logo}
-                accessibilityLabel={messages.common.logo}
-              />
-              <ThemedText type="smallBold" themeColor="textSecondary">
-                {messages.portfolio.brand}
-              </ThemedText>
             </View>
             <ThemedText type="title" style={styles.title}>{messages.portfolio.title}</ThemedText>
             {latestReport && (
@@ -324,7 +326,11 @@ const styles = StyleSheet.create({
   brandLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  brandGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.two,
   },
   logo: { width: 20, height: 20, borderRadius: Spacing.one },

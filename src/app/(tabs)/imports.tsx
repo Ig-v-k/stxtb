@@ -236,15 +236,17 @@ export default function ImportsScreen() {
           showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <View style={styles.brandLine}>
+              <View style={styles.brandGroup}>
+                <Image
+                  source={require('@/assets/images/icon.png')}
+                  style={styles.logo}
+                  accessibilityLabel={messages.common.logo}
+                />
+                <ThemedText type="smallBold" themeColor="textSecondary">
+                  {messages.imports.brand}
+                </ThemedText>
+              </View>
               <SettingsButton />
-              <Image
-                source={require('@/assets/images/icon.png')}
-                style={styles.logo}
-                accessibilityLabel={messages.common.logo}
-              />
-              <ThemedText type="smallBold" themeColor="textSecondary">
-                {messages.imports.brand}
-              </ThemedText>
             </View>
             <ThemedText type="title" style={styles.title}>
               {messages.imports.title}
@@ -273,9 +275,14 @@ export default function ImportsScreen() {
           </Pressable>
 
           <View style={styles.historyHeader}>
-            <ThemedText type="subtitle" style={styles.sectionTitle}>
-              {messages.imports.reportsInSession}
-            </ThemedText>
+            <View style={styles.historyHeading}>
+              <ThemedText type="subtitle" style={styles.sectionTitle}>
+                {messages.imports.reportsTitle}
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {messages.imports.reportsSubtitle}
+              </ThemedText>
+            </View>
             <ThemedText type="small" themeColor="textSecondary">
               {formatReportCount(reports.length, locale)}
             </ThemedText>
@@ -440,7 +447,11 @@ const styles = StyleSheet.create({
   brandLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  brandGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.two,
   },
   logo: {
@@ -466,10 +477,13 @@ const styles = StyleSheet.create({
   },
   historyHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginTop: Spacing.five,
     marginBottom: Spacing.three,
+  },
+  historyHeading: {
+    gap: Spacing.one,
   },
   clearButton: {
     alignSelf: 'flex-end',
