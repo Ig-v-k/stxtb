@@ -4,6 +4,7 @@ import { extractText, isAvailable } from 'expo-pdf-text-extract';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -228,12 +229,20 @@ export default function ImportsScreen() {
     <ThemedView style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView
+          style={styles.scrollView}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
-            <ThemedText type="smallBold" themeColor="textSecondary">
-              XTB · АНАЛИЗ ОТЧЕТОВ
-            </ThemedText>
+            <View style={styles.brandLine}>
+              <Image
+                source={require('@/assets/images/icon.png')}
+                style={styles.logo}
+                accessibilityLabel="Логотип STXTB"
+              />
+              <ThemedText type="smallBold" themeColor="textSecondary">
+                STXTB · ОТЧЁТЫ
+              </ThemedText>
+            </View>
             <ThemedText type="title" style={styles.title}>
               Анализ
             </ThemedText>
@@ -402,12 +411,14 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
+  },
+  scrollView: {
+    flex: 1,
   },
   content: {
     width: '100%',
     maxWidth: MaxContentWidth,
+    alignSelf: 'center',
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.five,
     paddingBottom: Spacing.six,
@@ -415,6 +426,16 @@ const styles = StyleSheet.create({
   header: {
     gap: Spacing.two,
     marginBottom: Spacing.four,
+  },
+  brandLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  logo: {
+    width: 20,
+    height: 20,
+    borderRadius: Spacing.one,
   },
   title: {
     fontSize: 40,

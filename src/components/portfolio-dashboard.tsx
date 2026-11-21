@@ -1,10 +1,10 @@
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import type { Metric } from '@/utils/portfolio-metrics';
 import type { ImportedReport } from '@/utils/imported-files';
 import { formatDecimal } from '@/utils/number-format';
+import type { Metric } from '@/utils/portfolio-metrics';
 import {
   getMetricDescription,
   SHORT_METRIC_LABELS,
@@ -36,9 +36,21 @@ export function PortfolioDashboard({
   return (
     <ThemedView style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
-            <ThemedText type="smallBold" themeColor="textSecondary">XTB · ПОРТФЕЛЬ</ThemedText>
+            <View style={styles.brandLine}>
+              <Image
+                source={require('@/assets/images/icon.png')}
+                style={styles.logo}
+                accessibilityLabel="Логотип STXTB"
+              />
+              <ThemedText type="smallBold" themeColor="textSecondary">
+                STXTB · ПОРТФЕЛЬ
+              </ThemedText>
+            </View>
             <ThemedText type="title" style={styles.title}>Аналитика</ThemedText>
             {latestReport && (
               <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
@@ -129,16 +141,35 @@ function MetricDialog({ metric, onClose }: { metric: Metric | null; onClose: () 
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  safeArea: { flex: 1, flexDirection: 'row', justifyContent: 'center' },
+  safeArea: { flex: 1 },
+  scrollView: { flex: 1 },
   content: {
     width: '100%',
     maxWidth: MaxContentWidth,
+    alignSelf: 'center',
     paddingHorizontal: Spacing.one,
     paddingTop: Spacing.three,
     paddingBottom: BottomTabInset + Spacing.three,
+    ...Platform.select({
+      web: {
+        paddingHorizontal: Spacing.four,
+        paddingTop: Spacing.five,
+      },
+    }),
   },
-  header: { gap: Spacing.one, marginBottom: Spacing.three },
-  title: { fontSize: 32, lineHeight: 38 },
+  header: { gap: Spacing.two, marginBottom: Spacing.four },
+  brandLine: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  logo: { width: 20, height: 20, borderRadius: Spacing.one },
+  title: {
+    fontSize: 32,
+    lineHeight: 38,
+    ...Platform.select({
+      web: {
+        fontSize: 40,
+        lineHeight: 46,
+      },
+    }),
+  },
   emptyState: { gap: Spacing.two, marginTop: Spacing.four },
   emptyTitle: { fontSize: 24, lineHeight: 30 },
   dashboard: { gap: Spacing.five },
