@@ -50,7 +50,6 @@ Desktop.ini
 .cache/
 .parcel-cache/
 .turbo/
-.eslintcache
 
 # editor temporary files
 *.swp

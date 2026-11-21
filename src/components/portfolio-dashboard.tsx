@@ -5,6 +5,7 @@ import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import type { ImportedReport } from '@/utils/imported-files';
 import { formatDecimal } from '@/utils/number-format';
 import type { Metric } from '@/utils/portfolio-metrics';
+import { parseStatisticNumber } from '@/utils/statement-stats';
 import {
   getMetricDescription,
   SHORT_METRIC_LABELS,
@@ -33,6 +34,8 @@ export function PortfolioDashboard({
   onSelectMetric,
   onCloseMetric,
 }: Props) {
+  const metrics = [...primaryMetrics, ...otherMetrics];
+
   return (
     <ThemedView style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -86,7 +89,7 @@ export function PortfolioDashboard({
           )}
         </ScrollView>
       </SafeAreaView>
-      <MetricDialog metric={selectedMetric} onClose={onCloseMetric} />
+      <MetricDialog metric={selectedMetric} metrics={metrics} onClose={onCloseMetric} />
     </ThemedView>
   );
 }
@@ -121,15 +124,38 @@ function MetricList({ metrics, onSelect }: { metrics: Metric[]; onSelect: (metri
   );
 }
 
-function MetricDialog({ metric, onClose }: { metric: Metric | null; onClose: () => void }) {
+function MetricDialog({
+  metric,
+  metrics,
+  onClose,
+}: {
+  metric: Metric | null;
+  metrics: Metric[];
+  onClose: () => void;
+}) {
+  const tradeDetails = metric ? getTradeDetails(metric.label, metrics) : null;
+
   return (
     <Modal animationType="fade" transparent visible={metric !== null} onRequestClose={onClose}>
       <View style={styles.modalBackdrop}>
         <ThemedView type="backgroundElement" style={styles.metricDialog}>
           <ThemedText type="subtitle" style={styles.metricDialogTitle}>{metric?.label}</ThemedText>
+          <ThemedText type="smallBold">{metric?.value}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             {metric ? getMetricDescription(metric.label) : ''}
           </ThemedText>
+          {tradeDetails && (
+            <View style={styles.assessment}>
+              <ThemedText
+                type="smallBold"
+                style={{ color: ASSESSMENT_COLORS[tradeDetails.tone] }}>
+                {tradeDetails.label}
+              </ThemedText>
+              {tradeDetails.rows.map((row) => (
+                <ThemedText key={row} type="small">{row}</ThemedText>
+              ))}
+            </View>
+          )}
           <Pressable accessibilityRole="button" onPress={onClose} style={styles.closeButton}>
             <ThemedText type="smallBold">Закрыть</ThemedText>
           </Pressable>
@@ -138,6 +164,79 @@ function MetricDialog({ metric, onClose }: { metric: Metric | null; onClose: () 
     </Modal>
   );
 }
+
+function getTradeDetails(label: string, metrics: Metric[]) {
+  if (!/^(?:Win Rate|Profit Factor|Payoff Ratio|Expectancy)$/i.test(label)) {
+    return null;
+  }
+
+  const getMetric = (name: string) =>
+    metrics.find((metric) => metric.label.toLowerCase() === name.toLowerCase());
+  const winRateMetric = getMetric('Win Rate');
+  const payoffMetric = getMetric('Payoff Ratio');
+  const expectancyMetric = getMetric('Expectancy');
+  const profitFactorMetric = getMetric('Profit Factor');
+  const tradeCountMetric = getMetric('Закрытых сделок');
+  const winRate = winRateMetric ? parseStatisticNumber(winRateMetric.value) : null;
+  const payoff = payoffMetric ? parseStatisticNumber(payoffMetric.value) : null;
+  const expectancy = expectancyMetric ? parseStatisticNumber(expectancyMetric.value) : null;
+  const profitFactor = profitFactorMetric ? parseStatisticNumber(profitFactorMetric.value) : null;
+  const rows: string[] = [];
+  const signals: number[] = [];
+
+  if (
+    winRateMetric &&
+    payoff !== null &&
+    payoff >= 0 &&
+    winRate !== null &&
+    winRate >= 0 &&
+    winRate <= 100
+  ) {
+    const breakEven = 100 / (1 + payoff);
+    const margin = winRate - breakEven;
+    rows.push(
+      `Win Rate ${winRateMetric.value} · безубыточный порог ${formatDecimal(breakEven)}% · ${margin > 0 ? '+' : ''}${formatDecimal(margin)} п.п.`
+    );
+    signals.push(Math.sign(margin));
+  }
+  if (expectancyMetric && expectancy !== null) {
+    signals.push(Math.sign(expectancy));
+  }
+  if (profitFactor !== null) {
+    signals.push(Math.sign(profitFactor - 1));
+  } else if (profitFactorMetric?.value.startsWith('∞')) {
+    signals.push(1);
+  }
+
+  const summary = [
+    expectancy !== null ? `Expectancy ${expectancyMetric?.value}` : '',
+    profitFactorMetric ? `Profit Factor ${profitFactorMetric.value}` : '',
+    tradeCountMetric ? `Сделок ${tradeCountMetric.value}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  if (summary) {
+    rows.push(summary);
+  }
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const hasPositive = signals.some((signal) => signal > 0);
+  const hasNegative = signals.some((signal) => signal < 0);
+  const isMixed = hasPositive && hasNegative;
+  return {
+    tone: isMixed ? 'caution' : hasPositive ? 'positive' : hasNegative ? 'negative' : 'caution',
+    label: isMixed ? 'Смешанный результат' : hasPositive ? 'В плюсе' : hasNegative ? 'В минусе' : 'Около нуля',
+    rows,
+  } as const;
+}
+
+const ASSESSMENT_COLORS = {
+  positive: '#16803C',
+  negative: '#C62828',
+  caution: '#A05A00',
+};
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
@@ -195,6 +294,7 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.four,
   },
   metricDialogTitle: { fontSize: 22, lineHeight: 28 },
+  assessment: { gap: Spacing.one },
   closeButton: {
     minHeight: 44,
     alignItems: 'center',
