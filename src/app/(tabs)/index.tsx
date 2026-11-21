@@ -4,14 +4,14 @@ import { PortfolioDashboard } from '@/components/portfolio-dashboard';
 import { useBenchmarkData } from '@/hooks/use-benchmark-data';
 import { useSessionReports } from '@/hooks/use-session-reports';
 import { hasBenchmarkHistory, type Metric } from '@/utils/portfolio-metrics';
-import {
-  buildPortfolioScreenData,
-  formatReportPeriod,
-} from '@/utils/portfolio-screen';
+import { buildPortfolioScreenData } from '@/utils/portfolio-screen';
+import { formatReportPeriod } from '@/i18n/formatters';
+import { useLocalization } from '@/i18n/provider';
 
 export default function HomeScreen() {
   const [selectedMetric, setSelectedMetric] = useState<Metric | null>(null);
   const { reports } = useSessionReports();
+  const { locale } = useLocalization();
 
   const sortedReports = useMemo(
     () =>
@@ -43,7 +43,7 @@ export default function HomeScreen() {
   return (
     <PortfolioDashboard
       latestReport={latestReport}
-      periodLabel={latestReport ? formatReportPeriod(latestReport) : ''}
+      periodLabel={formatReportPeriod(latestReport?.period ?? null, locale)}
       primaryMetrics={dashboard.primaryMetrics}
       otherMetrics={dashboard.otherMetrics}
       availableMetricCount={dashboard.availableMetricCount}

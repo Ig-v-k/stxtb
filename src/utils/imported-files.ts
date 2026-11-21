@@ -53,5 +53,6 @@ export type ImportedReport = {
   accountCurrency?: string;
   positions?: StatementPosition[];
   hasOtherAssets?: boolean;
+  analysisIssue?: 'no-metrics' | 'pdf-unavailable';
   analysisError?: string;
 };

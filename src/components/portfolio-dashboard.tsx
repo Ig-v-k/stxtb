@@ -2,14 +2,17 @@ import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { SettingsButton } from '@/components/settings-button';
+import { formatNumber, interpolate } from '@/i18n/formatters';
+import { useLocalization, type Locale } from '@/i18n/provider';
+import type { LocalizationMessages } from '@/i18n/translations';
+import {
+  getLocalizedMetricDescription,
+  localizeMetricLabel,
+} from '@/i18n/metric-localization';
 import type { ImportedReport } from '@/utils/imported-files';
-import { formatDecimal } from '@/utils/number-format';
 import type { Metric } from '@/utils/portfolio-metrics';
 import { parseStatisticNumber } from '@/utils/statement-stats';
-import {
-  getMetricDescription,
-  SHORT_METRIC_LABELS,
-} from '@/utils/portfolio-screen';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 
@@ -35,6 +38,7 @@ export function PortfolioDashboard({
   onCloseMetric,
 }: Props) {
   const metrics = [...primaryMetrics, ...otherMetrics];
+  const { locale, messages } = useLocalization();
 
   return (
     <ThemedView style={styles.screen}>
@@ -45,16 +49,17 @@ export function PortfolioDashboard({
           showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <View style={styles.brandLine}>
+              <SettingsButton />
               <Image
                 source={require('@/assets/images/icon.png')}
                 style={styles.logo}
-                accessibilityLabel="Логотип STXTB"
+                accessibilityLabel={messages.common.logo}
               />
               <ThemedText type="smallBold" themeColor="textSecondary">
-                STXTB · ПОРТФЕЛЬ
+                {messages.portfolio.brand}
               </ThemedText>
             </View>
-            <ThemedText type="title" style={styles.title}>Аналитика</ThemedText>
+            <ThemedText type="title" style={styles.title}>{messages.portfolio.title}</ThemedText>
             {latestReport && (
               <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
                 {periodLabel} · {latestReport.name}
@@ -64,58 +69,91 @@ export function PortfolioDashboard({
 
           {!latestReport ? (
             <View style={styles.emptyState}>
-              <ThemedText type="subtitle" style={styles.emptyTitle}>Пока пусто</ThemedText>
+              <ThemedText type="subtitle" style={styles.emptyTitle}>
+                {messages.portfolio.emptyTitle}
+              </ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                Импортируйте PDF-отчет на вкладке «Файлы», чтобы увидеть показатели портфеля.
+                {messages.portfolio.emptyDescription}
               </ThemedText>
             </View>
           ) : (
             <View style={styles.dashboard}>
               {primaryMetrics.length > 0 && (
-                <MetricSection title="ГЛАВНОЕ" metrics={primaryMetrics} onSelect={onSelectMetric} />
+                <MetricSection
+                  title={messages.portfolio.mainSection}
+                  metrics={primaryMetrics}
+                  locale={locale}
+                  onSelect={onSelectMetric}
+                />
               )}
               {otherMetrics.length > 0 && (
                 <View style={styles.section}>
                   <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionTitle}>
-                    ПОДРОБНЫЕ ПОКАЗАТЕЛИ
+                    {messages.portfolio.detailsSection}
                   </ThemedText>
                   <ThemedText type="small" themeColor="textSecondary">
-                    Всего доступно метрик: {formatDecimal(availableMetricCount)}
+                    {interpolate(messages.portfolio.availableMetrics, {
+                      count: formatNumber(availableMetricCount, locale),
+                    })}
                   </ThemedText>
-                  <MetricList metrics={otherMetrics} onSelect={onSelectMetric} />
+                  <MetricList metrics={otherMetrics} locale={locale} onSelect={onSelectMetric} />
                 </View>
               )}
             </View>
           )}
         </ScrollView>
       </SafeAreaView>
-      <MetricDialog metric={selectedMetric} metrics={metrics} onClose={onCloseMetric} />
+      <MetricDialog
+        metric={selectedMetric}
+        metrics={metrics}
+        onClose={onCloseMetric}
+      />
     </ThemedView>
   );
 }
 
-function MetricSection({ title, metrics, onSelect }: { title: string; metrics: Metric[]; onSelect: (metric: Metric) => void }) {
+function MetricSection({
+  title,
+  metrics,
+  locale,
+  onSelect,
+}: {
+  title: string;
+  metrics: Metric[];
+  locale: Locale;
+  onSelect: (metric: Metric) => void;
+}) {
   return (
     <View style={styles.section}>
       <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionTitle}>{title}</ThemedText>
-      <MetricList metrics={metrics} onSelect={onSelect} />
+      <MetricList metrics={metrics} locale={locale} onSelect={onSelect} />
     </View>
   );
 }
 
-function MetricList({ metrics, onSelect }: { metrics: Metric[]; onSelect: (metric: Metric) => void }) {
+function MetricList({
+  metrics,
+  locale,
+  onSelect,
+}: {
+  metrics: Metric[];
+  locale: Locale;
+  onSelect: (metric: Metric) => void;
+}) {
+  const { messages } = useLocalization();
+
   return (
     <View style={styles.metricList}>
       {metrics.map((metric, index) => (
         <Pressable
           key={`${metric.label}-${index}`}
           accessibilityRole="button"
-          accessibilityLabel={`${SHORT_METRIC_LABELS[metric.label] ?? metric.label}, ${metric.value}`}
-          accessibilityHint="Открыть описание показателя"
+          accessibilityLabel={`${localizeMetricLabel(metric.label, locale)}, ${metric.value}`}
+          accessibilityHint={messages.portfolio.openMetricHint}
           onPress={() => onSelect(metric)}
           style={({ pressed }) => [styles.metricRow, pressed && styles.metricPressed]}>
           <ThemedText type="small" style={styles.metricLabel}>
-            {SHORT_METRIC_LABELS[metric.label] ?? metric.label}
+            {localizeMetricLabel(metric.label, locale)}
           </ThemedText>
           <ThemedText type="small" style={styles.metricValue}>{metric.value}</ThemedText>
         </Pressable>
@@ -133,16 +171,21 @@ function MetricDialog({
   metrics: Metric[];
   onClose: () => void;
 }) {
-  const tradeDetails = metric ? getTradeDetails(metric.label, metrics) : null;
+  const { locale, messages } = useLocalization();
+  const tradeDetails = metric
+    ? getTradeDetails(metric.label, metrics, locale, messages)
+    : null;
 
   return (
     <Modal animationType="fade" transparent visible={metric !== null} onRequestClose={onClose}>
       <View style={styles.modalBackdrop}>
         <ThemedView type="backgroundElement" style={styles.metricDialog}>
-          <ThemedText type="subtitle" style={styles.metricDialogTitle}>{metric?.label}</ThemedText>
+          <ThemedText type="subtitle" style={styles.metricDialogTitle}>
+            {metric ? localizeMetricLabel(metric.label, locale) : ''}
+          </ThemedText>
           <ThemedText type="smallBold">{metric?.value}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {metric ? getMetricDescription(metric.label) : ''}
+            {metric ? getLocalizedMetricDescription(metric.label, locale) : ''}
           </ThemedText>
           {tradeDetails && (
             <View style={styles.assessment}>
@@ -157,7 +200,7 @@ function MetricDialog({
             </View>
           )}
           <Pressable accessibilityRole="button" onPress={onClose} style={styles.closeButton}>
-            <ThemedText type="smallBold">Закрыть</ThemedText>
+            <ThemedText type="smallBold">{messages.common.close}</ThemedText>
           </Pressable>
         </ThemedView>
       </View>
@@ -165,7 +208,12 @@ function MetricDialog({
   );
 }
 
-function getTradeDetails(label: string, metrics: Metric[]) {
+function getTradeDetails(
+  label: string,
+  metrics: Metric[],
+  locale: Locale,
+  messages: LocalizationMessages
+) {
   if (!/^(?:Win Rate|Profit Factor|Payoff Ratio|Expectancy)$/i.test(label)) {
     return null;
   }
@@ -176,7 +224,9 @@ function getTradeDetails(label: string, metrics: Metric[]) {
   const payoffMetric = getMetric('Payoff Ratio');
   const expectancyMetric = getMetric('Expectancy');
   const profitFactorMetric = getMetric('Profit Factor');
-  const tradeCountMetric = getMetric('Закрытых сделок');
+  const tradeCountMetric = metrics.find((item) =>
+    /^(?:закрытых сделок|closed trades)$/i.test(item.label)
+  );
   const winRate = winRateMetric ? parseStatisticNumber(winRateMetric.value) : null;
   const payoff = payoffMetric ? parseStatisticNumber(payoffMetric.value) : null;
   const expectancy = expectancyMetric ? parseStatisticNumber(expectancyMetric.value) : null;
@@ -195,7 +245,7 @@ function getTradeDetails(label: string, metrics: Metric[]) {
     const breakEven = 100 / (1 + payoff);
     const margin = winRate - breakEven;
     rows.push(
-      `Win Rate ${winRateMetric.value} · безубыточный порог ${formatDecimal(breakEven)}% · ${margin > 0 ? '+' : ''}${formatDecimal(margin)} п.п.`
+      `${localizeMetricLabel('Win Rate', locale)} ${winRateMetric.value} · ${interpolate(messages.portfolio.breakeven, { value: formatNumber(breakEven, locale) })} · ${margin > 0 ? '+' : ''}${formatNumber(margin, locale)} ${messages.portfolio.percentagePoints}`
     );
     signals.push(Math.sign(margin));
   }
@@ -209,9 +259,17 @@ function getTradeDetails(label: string, metrics: Metric[]) {
   }
 
   const summary = [
-    expectancy !== null ? `Expectancy ${expectancyMetric?.value}` : '',
-    profitFactorMetric ? `Profit Factor ${profitFactorMetric.value}` : '',
-    tradeCountMetric ? `Сделок ${tradeCountMetric.value}` : '',
+    expectancy !== null
+      ? `${localizeMetricLabel('Expectancy', locale)} ${expectancyMetric?.value}`
+      : '',
+    profitFactorMetric
+      ? `${localizeMetricLabel('Profit Factor', locale)} ${profitFactorMetric.value}`
+      : '',
+    tradeCountMetric
+      ? interpolate(messages.portfolio.trades, {
+          count: tradeCountMetric.value,
+        })
+      : '',
   ]
     .filter(Boolean)
     .join(' · ');
@@ -227,7 +285,13 @@ function getTradeDetails(label: string, metrics: Metric[]) {
   const isMixed = hasPositive && hasNegative;
   return {
     tone: isMixed ? 'caution' : hasPositive ? 'positive' : hasNegative ? 'negative' : 'caution',
-    label: isMixed ? 'Смешанный результат' : hasPositive ? 'В плюсе' : hasNegative ? 'В минусе' : 'Около нуля',
+    label: isMixed
+      ? messages.portfolio.mixed
+      : hasPositive
+        ? messages.portfolio.positive
+        : hasNegative
+          ? messages.portfolio.negative
+          : messages.portfolio.neutral,
     rows,
   } as const;
 }
@@ -257,7 +321,12 @@ const styles = StyleSheet.create({
     }),
   },
   header: { gap: Spacing.two, marginBottom: Spacing.four },
-  brandLine: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  brandLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: Spacing.two,
+  },
   logo: { width: 20, height: 20, borderRadius: Spacing.one },
   title: {
     fontSize: 32,

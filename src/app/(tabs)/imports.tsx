@@ -16,54 +16,54 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { SettingsButton } from '@/components/settings-button';
 import { Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useSessionReports } from '@/hooks/use-session-reports';
 import { useTheme } from '@/hooks/use-theme';
+import {
+  formatNumber,
+  formatReportCount,
+  formatReportPeriod,
+  interpolate,
+} from '@/i18n/formatters';
+import { useLocalization, type Locale } from '@/i18n/provider';
+import type { LocalizationMessages } from '@/i18n/translations';
 import type { ImportedReport, StatementPeriod } from '@/utils/imported-files';
 import { sanitizeImportedFileName } from '@/utils/imported-files';
 import { parseStatement } from '@/utils/statement-stats';
 import { parseXtbWorkbook } from '@/utils/xtb-workbook';
-import { formatDecimal } from '@/utils/number-format';
 
-function formatFileSize(size: number | null) {
+function formatFileSize(
+  size: number | null,
+  locale: Locale,
+  messages: LocalizationMessages['imports']
+) {
   if (size === null) {
-    return 'Размер не указан';
+    return messages.noSize;
   }
   if (size < 1024) {
-    return `${formatDecimal(size)} Б`;
+    return `${formatNumber(size, locale)} ${messages.fileSize.bytes}`;
   }
   if (size < 1024 * 1024) {
-    return `${formatDecimal(size / 1024)} КБ`;
+    return `${formatNumber(size / 1024, locale)} ${messages.fileSize.kilobytes}`;
   }
-  return `${formatDecimal(size / (1024 * 1024))} МБ`;
+  return `${formatNumber(size / (1024 * 1024), locale)} ${messages.fileSize.megabytes}`;
 }
 
-function formatPeriodDate(value: string) {
-  const [year, month, day] = value.split('-');
-  return `${day}.${month}.${year}`;
-}
-
-function formatPeriod(period: StatementPeriod | null) {
-  if (!period) {
-    return 'Период не определен';
-  }
-  if (period.kind === 'all-time') {
-    return 'За всё время';
-  }
-  return `${formatPeriodDate(period.start)} – ${formatPeriodDate(period.end)}`;
-}
-
-function getPeriodSourceLabel(period: StatementPeriod) {
+function getPeriodSourceLabel(
+  period: StatementPeriod,
+  messages: LocalizationMessages['imports']
+) {
   if (period.source === 'filename') {
-    return 'Определен по имени файла — проверьте';
+    return messages.sourceFilename;
   }
   if (period.source === 'manual') {
-    return 'Указан вручную';
+    return messages.sourceManual;
   }
   if (period.source === 'xlsx') {
-    return 'Определен по XLSX';
+    return messages.sourceXlsx;
   }
-  return 'Определен по тексту PDF';
+  return messages.sourcePdf;
 }
 
 function getPdfErrorCode(error: unknown) {
@@ -75,6 +75,7 @@ function getPdfErrorCode(error: unknown) {
 
 export default function ImportsScreen() {
   const theme = useTheme();
+  const { locale, messages } = useLocalization();
   const { reports, addReports, clearReports } = useSessionReports();
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,8 +87,8 @@ export default function ImportsScreen() {
     setPdfPassword('');
     setPasswordMessage(
       incorrect
-        ? 'Пароль не подошел. Проверьте его и попробуйте еще раз.'
-        : 'Введите пароль отчета. Он используется только для чтения PDF и не сохраняется.'
+        ? messages.imports.passwordIncorrect
+        : messages.imports.passwordPrompt
     );
     setPasswordPromptVisible(true);
 
@@ -118,7 +119,7 @@ export default function ImportsScreen() {
 
         const enteredPassword = await requestPdfPassword(code === 'INCORRECT_PASSWORD');
         if (enteredPassword === null) {
-          throw new Error('Ввод пароля отменен; файл не обработан.');
+          throw new Error(messages.imports.passwordCancelled);
         }
         password = enteredPassword;
       }
@@ -163,7 +164,7 @@ export default function ImportsScreen() {
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       );
       if (selectedFiles.length === 0) {
-        setError('Выберите PDF-отчет или XLSX-экспорт истории операций XTB.');
+        setError(messages.imports.selectFileError);
         return;
       }
 
@@ -187,16 +188,16 @@ export default function ImportsScreen() {
 
         let statement: ReturnType<typeof parseStatement> | undefined;
         let analysisError: string | undefined;
+        let analysisIssue: ImportedReport['analysisIssue'];
 
         if (isAvailable()) {
           const text = await extractPdfText(file.uri);
           statement = parseStatement(text, file.name);
           if (statement.statistics.length === 0 && statement.positions.length === 0) {
-            analysisError = 'В отчете не найдены знакомые финансовые показатели.';
+            analysisIssue = 'no-metrics';
           }
         } else {
-          analysisError =
-            'Для извлечения данных нужен development build приложения на iOS или Android.';
+          analysisIssue = 'pdf-unavailable';
         }
 
         additions.push({
@@ -209,6 +210,7 @@ export default function ImportsScreen() {
           accountCurrency: statement?.accountCurrency,
           positions: statement?.positions ?? [],
           hasOtherAssets: statement?.hasOtherAssets,
+          analysisIssue,
           analysisError,
         });
       }
@@ -217,8 +219,8 @@ export default function ImportsScreen() {
     } catch (importError) {
       setError(
         importError instanceof Error
-          ? `Не удалось добавить файл: ${importError.message}`
-          : 'Не удалось добавить выбранные файлы.'
+          ? interpolate(messages.imports.fileError, { message: importError.message })
+          : messages.imports.filesError
       );
     } finally {
       setImporting(false);
@@ -234,20 +236,21 @@ export default function ImportsScreen() {
           showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <View style={styles.brandLine}>
+              <SettingsButton />
               <Image
                 source={require('@/assets/images/icon.png')}
                 style={styles.logo}
-                accessibilityLabel="Логотип STXTB"
+                accessibilityLabel={messages.common.logo}
               />
               <ThemedText type="smallBold" themeColor="textSecondary">
-                STXTB · ОТЧЁТЫ
+                {messages.imports.brand}
               </ThemedText>
             </View>
             <ThemedText type="title" style={styles.title}>
-              Анализ
+              {messages.imports.title}
             </ThemedText>
             <ThemedText themeColor="textSecondary">
-              PDF и XLSX обрабатываются на устройстве. Результаты доступны только пока приложение открыто.
+              {messages.imports.description}
             </ThemedText>
           </View>
 
@@ -264,17 +267,17 @@ export default function ImportsScreen() {
               <ActivityIndicator color={theme.background} />
             ) : (
               <ThemedText style={[styles.importButtonText, { color: theme.background }]}>
-                Выбрать PDF- или XLSX-файлы
+                {messages.imports.chooseFiles}
               </ThemedText>
             )}
           </Pressable>
 
           <View style={styles.historyHeader}>
             <ThemedText type="subtitle" style={styles.sectionTitle}>
-              Отчеты в этой сессии
+              {messages.imports.reportsInSession}
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              {formatDecimal(reports.length)} {reports.length === 1 ? 'отчет' : 'отчетов'}
+              {formatReportCount(reports.length, locale)}
             </ThemedText>
           </View>
           {reports.length > 0 && (
@@ -283,7 +286,7 @@ export default function ImportsScreen() {
               onPress={clearCurrentReports}
               style={styles.clearButton}>
               <ThemedText type="smallBold" themeColor="textSecondary">
-                Очистить результаты
+                {messages.imports.clearResults}
               </ThemedText>
             </Pressable>
           )}
@@ -300,10 +303,10 @@ export default function ImportsScreen() {
                 PDF / XLSX
               </ThemedText>
               <ThemedText type="smallBold">
-                Импортируйте PDF-отчет или XLSX-историю операций
+                {messages.imports.emptyTitle}
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary" style={styles.emptyHint}>
-                Операции, сделки и открытые позиции будут включены в аналитику, если они есть в файле.
+                {messages.imports.emptyDescription}
               </ThemedText>
             </ThemedView>
           ) : (
@@ -324,16 +327,23 @@ export default function ImportsScreen() {
                         {report.name}
                       </ThemedText>
                       <ThemedText type="small" themeColor="textSecondary">
-                        {formatFileSize(report.size)} · {formatPeriod(report.period)}
+                        {formatFileSize(report.size, locale, messages.imports)} · {formatReportPeriod(report.period, locale)}
                       </ThemedText>
                       {report.period && (
                         <ThemedText type="small" themeColor="textSecondary">
-                          {getPeriodSourceLabel(report.period)}
+                          {getPeriodSourceLabel(report.period, messages.imports)}
                         </ThemedText>
                       )}
                       {report.periodConflict && (
                         <ThemedText type="small" themeColor="textSecondary">
-                          Даты в PDF и имени файла расходятся — проверьте период.
+                          {messages.imports.periodConflict}
+                        </ThemedText>
+                      )}
+                      {report.analysisIssue && (
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {report.analysisIssue === 'no-metrics'
+                            ? messages.imports.noMetricsError
+                            : messages.imports.developmentBuildError}
                         </ThemedText>
                       )}
                       {report.analysisError && (
@@ -358,18 +368,18 @@ export default function ImportsScreen() {
         <View style={styles.modalBackdrop}>
           <ThemedView type="backgroundElement" style={styles.passwordCard}>
             <ThemedText type="subtitle" style={styles.passwordTitle}>
-              Пароль PDF
+              {messages.imports.passwordTitle}
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               {passwordMessage}
             </ThemedText>
             <TextInput
-              accessibilityLabel="Пароль PDF"
+              accessibilityLabel={messages.imports.passwordLabel}
               autoCapitalize="none"
               autoCorrect={false}
               onChangeText={setPdfPassword}
               onSubmitEditing={() => finishPasswordPrompt(pdfPassword)}
-              placeholder="Пароль отчета"
+              placeholder={messages.imports.passwordPlaceholder}
               placeholderTextColor={theme.textSecondary}
               returnKeyType="done"
               secureTextEntry
@@ -388,14 +398,14 @@ export default function ImportsScreen() {
                 onPress={() => finishPasswordPrompt(null)}
                 style={styles.passwordButton}>
                 <ThemedText type="smallBold" themeColor="textSecondary">
-                  Отмена
+                  {messages.common.cancel}
                 </ThemedText>
               </Pressable>
               <Pressable
                 accessibilityRole="button"
                 onPress={() => finishPasswordPrompt(pdfPassword)}
                 style={styles.passwordButton}>
-                <ThemedText type="smallBold">Продолжить</ThemedText>
+                <ThemedText type="smallBold">{messages.common.continue}</ThemedText>
               </Pressable>
             </View>
           </ThemedView>
@@ -430,6 +440,7 @@ const styles = StyleSheet.create({
   brandLine: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-start',
     gap: Spacing.two,
   },
   logo: {
