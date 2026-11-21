@@ -1,63 +1,53 @@
-# Welcome to your Expo app 👋
+# STXTB
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Мобильное приложение для импорта отчётов брокера XTB и просмотра основных показателей портфеля.
 
-## Get started
+Expo SDK 57 / React Native / Expo Router. Основной код находится в `src/`, маршруты — в `src/app/`.
 
-1. Install dependencies
+## Текущие возможности
 
-   ```bash
-   npm install
-   ```
+- Импорт PDF- и XLSX-отчётов на вкладке «Файлы».
+- Извлечение баланса, стоимости портфеля, прибыли/убытка и денежных потоков.
+- Расчёт доступных показателей доходности и рыночных сравнений.
+- Отдельные состояния для отсутствующих данных и ограничений формата отчёта.
 
-2. Start the app
+На данный момент PDF-текст извлекается только в development build. Для защищённых PDF пароль запрашивается в приложении и не сохраняется.
 
-   ```bash
-   npx expo start
-   ```
-
-## PDF reports
-
-Import PDF statements from the **Files** tab. On iOS and Android development builds, the app extracts common balance, equity, profit/loss, deposit, withdrawal, fee, dividend, and swap figures and shows them on the home screen. A PDF password is requested in-app when needed and is not saved. PDF text extraction requires a development build; Expo Go and web builds show an availability message.
-
-The home screen groups metrics into a report-only snapshot, a historical analysis, and market comparisons. Position weights use account value when currencies are comparable; concentration and HHI are calculated from the reported positions. Historical returns use consecutive dated account-value snapshots and reported deposits/withdrawals. With aggregate cash flows only, TWR uses the Modified Dietz midpoint assumption and XIRR dates flows at the report-period midpoint. Volatility and drawdown therefore reflect report frequency, and historical VaR/CVaR are shown only with at least 20 return periods.
-
-For USD portfolios with at least two valid account-value snapshots, market comparisons use the public FRED `SP500` price index and `DGS3MO` 3-month Treasury rate. The app requests only these fixed series identifiers and caches the result locally for 24 hours; portfolio files, amounts, report/operation dates, and instrument identifiers are never sent to FRED. The S&P 500 series starts in 2016 and excludes dividends. Coverage gaps are shown rather than estimated. Transaction exports support trade statistics, income, costs, and traded value, but do not provide historical account values; portfolio-return metrics are not inferred from transactions. Active Share, Fama–French alpha, and Brinson attribution remain unavailable without the underlying constituent/factor/sector data.
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Запуск
 
 ```bash
-npm run reset-project
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Дополнительные команды:
 
-### Other setup steps
+```bash
+npx expo start --android
+npx expo start --ios
+npx expo start --web
+npx tsc --noEmit
+npx expo lint
+```
 
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+Составные native-модули требуют development build. Нативные папки `android/` и `ios/` не добавляются вручную — конфигурация задаётся в `app.json` и через Expo config plugins.
 
-## Learn more
+## Конфигурация
 
-To learn more about developing your project with Expo, look at the following resources:
+- Основные настройки Expo/EAS: `app.json`, `eas.json`.
+- Алиасы TypeScript: `@/*` → `src/*`.
+- Строгий TypeScript включён в `tsconfig.json`.
+- Маршрутизация: Expo Router, входная точка `src/app/index.tsx`.
+- Зависимости устанавливать через `npx expo install <package>`.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Файлы окружения игнорируются Git. Для публичных настроек не используйте префиксы или механизмы, которые делают секреты доступными на устройстве: ключи и токены нельзя хранить в клиентском коде. Создавайте `.env.example` с пустыми или нейтральными значениями для новых переменных.
 
-## Join the community
+## Данные и приватность
 
-Join our community of developers creating universal apps.
+- Отчёты и финансовые значения обрабатываются локально в приложении.
+- Пароли PDF и пользовательские отчёты не должны попадать в репозиторий, журналы или аналитические сервисы.
+- Не коммитить PDF, XLSX, экспортированные отчёты, кэш, файлы окружения, ключи и сертификаты.
+- Запросы рыночных данных должны отправлять только необходимые идентификаторы; не передавать содержимое отчётов, суммы, даты операций и инструменты.
+- Перед добавлением сетевых сервисов документировать, какие данные отправляются и куда.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+`.gitignore` уже исключает локальные окружения, сертификаты, кэши, зависимости и сгенерированные native-папки. Проверяйте `git status` перед коммитом.
