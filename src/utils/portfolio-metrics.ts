@@ -2,8 +2,9 @@ import type { ImportedReport } from './imported-files';
 import { formatDecimal } from './number-format';
 import { parseStatisticNumber } from './statement-stats';
 import type { BenchmarkData, MarketDataPoint } from './benchmark-data';
+import { normalizeMetricId, type MetricId } from '../i18n/metric-localization';
 
-export type Metric = { label: string; value: string };
+export type Metric = { id?: MetricId; label: string; value: string };
 
 type Snapshot = {
   start: string;
@@ -183,6 +184,7 @@ function benchmarkMetric(
   format: (value: number) => string
 ): Metric {
   return {
+    id: normalizeMetricId(label),
     label,
     value: value === null || !Number.isFinite(value) ? '—' : format(value),
   };
@@ -197,9 +199,10 @@ export function getBenchmarkMetrics(
   stale: boolean
 ): Metric[] {
   const unavailable = (reason: string) =>
-    BENCHMARK_METRIC_LABELS.map((label) => ({ label, value: reason }));
+    BENCHMARK_METRIC_LABELS.map((label) => ({ id: normalizeMetricId(label), label, value: reason }));
   const snapshots = getSnapshots(reports, currency);
   const statusMetric: Metric = {
+    id: 'benchmarkFred',
     label: 'Бенчмарк (FRED)',
     value: benchmarkData
       ? `S&P 500 · по ${benchmarkData.prices[benchmarkData.prices.length - 1].date}${
@@ -346,7 +349,7 @@ export function getBenchmarkMetrics(
     observations.length < periods.length
       ? ` · ${formatNumber(observations.length)}/${formatNumber(periods.length)} периодов с данными бенчмарка`
       : '';
-  const metrics = [
+  const metrics: Metric[] = [
     benchmarkMetric(
       'Alpha',
       portfolioGrowth - marketGrowth,
@@ -371,12 +374,14 @@ export function getBenchmarkMetrics(
       formats.ratio
     ),
     {
+      id: 'upsideDownsideCapture',
       label: 'Upside/Downside Capture',
       value: `${upsideCapture === null ? '—' : formatPercent(upsideCapture)} / ${
         downsideCapture === null ? '—' : formatPercent(downsideCapture)
       }`,
     },
     {
+      id: 'activeShare',
       label: 'Active Share',
       value: '— (нужны веса бумаг и состав бенчмарка; тикеры не отправляются наружу)',
     },
@@ -387,14 +392,17 @@ export function getBenchmarkMetrics(
     ),
     benchmarkMetric('Jensen’s Alpha', riskAdjustedAlpha, formats.percent),
     {
+      id: 'famaFrenchAlpha',
       label: 'Alpha Fama–French',
       value: '— (нужны ряды факторов Fama–French)',
     },
     {
+      id: 'brinsonAllocation',
       label: 'Brinson Allocation',
       value: '— (нужны секторные веса портфеля и бенчмарка)',
     },
     {
+      id: 'brinsonSelection',
       label: 'Brinson Selection',
       value: '— (нужны доходности и секторные веса бумаг)',
     },
@@ -574,23 +582,25 @@ function buildMetrics(snapshots: Snapshot[], periods: ReturnPeriod[], currency?:
     cvar === null ? null : Math.max(0, -cvar) * snapshots[snapshots.length - 1].value;
 
   return [
-    { label: 'Периодов с денежными потоками', value: formatNumber(periods.length) },
-    { label: 'Cumulative Return (TWR)', value: formatPercent(cumulativeReturn) },
-    { label: 'TWR', value: `${formatPercent(cumulativeReturn)} · Modified Dietz` },
-    { label: 'CAGR', value: formatAnnualized(annualizedReturn) },
-    { label: 'Annualized Return', value: formatAnnualized(annualizedReturn) },
+    { id: 'cashFlowPeriods', label: 'Периодов с денежными потоками', value: formatNumber(periods.length) },
+    { id: 'cumulativeReturn', label: 'Cumulative Return (TWR)', value: formatPercent(cumulativeReturn) },
+    { id: 'twr', label: 'TWR', value: `${formatPercent(cumulativeReturn)} · Modified Dietz` },
+    { id: 'cagr', label: 'CAGR', value: formatAnnualized(annualizedReturn) },
+    { id: 'annualizedReturn', label: 'Annualized Return', value: formatAnnualized(annualizedReturn) },
     {
+      id: 'mwrXirr',
       label: 'MWR / XIRR',
       value:
         moneyWeightedReturn === null
           ? '— (XIRR не сошёлся)'
           : `${formatPercent(moneyWeightedReturn)} · потоки по середине периода`,
     },
-    { label: 'Стандартное отклонение (год.)', value: formatVolatility(annualizedVolatility) },
-    { label: 'Downside Deviation (год.)', value: formatVolatility(downsideDeviation) },
-    { label: 'Max Drawdown', value: formatPercent(drawdown.maximum) },
-    { label: 'Drawdown Duration', value: `${formatNumber(drawdown.duration)} дн.` },
+    { id: 'annualizedVolatility', label: 'Стандартное отклонение (год.)', value: formatVolatility(annualizedVolatility) },
+    { id: 'downsideDeviation', label: 'Downside Deviation (год.)', value: formatVolatility(downsideDeviation) },
+    { id: 'maxDrawdown', label: 'Max Drawdown', value: formatPercent(drawdown.maximum) },
+    { id: 'drawdownDuration', label: 'Drawdown Duration', value: `${formatNumber(drawdown.duration)} дн.` },
     {
+      id: 'var95',
       label: 'VaR 95% (период)',
       value:
         varQuantile === null || varAmount === null
@@ -598,16 +608,17 @@ function buildMetrics(snapshots: Snapshot[], periods: ReturnPeriod[], currency?:
         : `${formatPercent(Math.max(0, -varQuantile))} · ${formatCurrencyAmount(varAmount, currency)}`,
     },
     {
+      id: 'cvar95',
       label: 'CVaR 95% (период)',
       value:
         cvar === null || cvarAmount === null
           ? '— (нужно не менее 20 периодов)'
         : `${formatPercent(Math.max(0, -cvar))} · ${formatCurrencyAmount(cvarAmount, currency)}`,
     },
-    { label: 'Sharpe (безрисковая ставка 0%)', value: formatRatio(sharpe) },
-    { label: 'Sortino (целевая доходность 0%)', value: formatRatio(sortino) },
-    { label: 'Calmar', value: formatRatio(calmar) },
-    { label: 'Omega (порог 0%)', value: formatRatio(omega) },
+    { id: 'sharpe', label: 'Sharpe (безрисковая ставка 0%)', value: formatRatio(sharpe) },
+    { id: 'sortino', label: 'Sortino (целевая доходность 0%)', value: formatRatio(sortino) },
+    { id: 'calmar', label: 'Calmar', value: formatRatio(calmar) },
+    { id: 'omega', label: 'Omega (порог 0%)', value: formatRatio(omega) },
   ];
 }
 
@@ -630,11 +641,11 @@ export function getDynamicMetrics(reports: ImportedReport[], currency?: string):
       'Sortino (целевая доходность 0%)',
       'Calmar',
       'Omega (порог 0%)',
-    ].map((label) => ({ label, value: reason }));
+    ].map((label) => ({ id: normalizeMetricId(label), label, value: reason }));
 
   if (snapshots.length < 2) {
     return [
-      { label: 'Снимков портфеля', value: formatNumber(snapshots.length) },
+      { id: 'snapshots', label: 'Снимков портфеля', value: formatNumber(snapshots.length) },
       ...notAvailable(INSUFFICIENT_HISTORY),
     ];
   }
@@ -642,7 +653,7 @@ export function getDynamicMetrics(reports: ImportedReport[], currency?: string):
   const periods = getReturnPeriods(snapshots);
   if (!periods || periods.length === 0) {
     return [
-      { label: 'Снимков портфеля', value: formatNumber(snapshots.length) },
+      { id: 'snapshots', label: 'Снимков портфеля', value: formatNumber(snapshots.length) },
       ...notAvailable('— (нет непрерывной истории или данных о пополнениях/выводах)'),
     ];
   }

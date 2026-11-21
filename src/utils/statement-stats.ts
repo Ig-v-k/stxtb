@@ -1,4 +1,5 @@
 import type { StatementPeriod, StatementPosition, StatementStatistic } from './imported-files';
+import { normalizeMetricId } from '../i18n/metric-localization';
 
 const ACCOUNT_CURRENCIES = 'USD|EUR|GBP|RUB|PLN|CZK|HUF|CHF|JPY|CAD|AUD|HKD|USDT';
 const NUMBER_SOURCE = String.raw`[-+]?(?:\d{1,3}(?:[ \u00a0\u202f,.'’]\d{3})+|\d+)(?:[.,]\d+)?`;
@@ -380,7 +381,7 @@ function parseLegacyStatistics(text: string): StatementStatistic[] {
           : undefined);
 
       if (value) {
-        found.set(statistic.label, { label: statistic.label, value: normalizeWhitespace(value) });
+        found.set(statistic.label, { id: normalizeMetricId(statistic.label), label: statistic.label, value: normalizeWhitespace(value) });
       }
     }
   }

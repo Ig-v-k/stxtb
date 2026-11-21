@@ -16,7 +16,12 @@ type LocalizationContextValue = {
 const LocalizationContext = createContext<LocalizationContextValue | null>(null);
 
 export function LocalizationProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>('en');
+  const [locale, setLocaleState] = useState<Locale>(() => {
+    const systemLocale = Intl.DateTimeFormat().resolvedOptions().locale.toLowerCase();
+    if (systemLocale.startsWith('ru')) return 'ru';
+    if (systemLocale.startsWith('pl')) return 'pl';
+    return 'en';
+  });
 
   useEffect(() => {
     let active = true;

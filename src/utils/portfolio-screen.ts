@@ -11,6 +11,7 @@ import {
 } from './portfolio-metrics';
 import { parseStatisticNumber } from './statement-stats';
 import { formatDecimal } from './number-format';
+import { normalizeMetricId } from '../i18n/metric-localization';
 
 const PRIMARY_METRIC_PATTERNS = [
   /^(?:Снимков портфеля|Периодов с денежными потоками)$/i,
@@ -137,14 +138,14 @@ function formatStatisticValue(value: string, currency?: string, label?: string) 
 
 function getSourceMetric(report: ImportedReport, label: string, pattern: RegExp, currency?: string, percentage = false): Metric {
   const statistic = getStatisticMatching(report, pattern);
-  if (!statistic) return { label, value: '— (нет данных в отчёте)' };
+  if (!statistic) return { id: normalizeMetricId(label), label, value: '— (нет данных в отчёте)' };
   if (percentage) {
     const value = parseStatisticNumber(statistic.value);
     const isProfitLoss = /p.?n.?l|profit|loss|результат|прибы|убыток/i.test(label);
     const sign = isProfitLoss && value !== null && value > 0 ? '+' : '';
-    return { label, value: value === null ? statistic.value : `${sign}${formatNumber(value)}${statistic.value.includes('%') ? '' : '%'}` };
+    return { id: normalizeMetricId(label), label, value: value === null ? statistic.value : `${sign}${formatNumber(value)}${statistic.value.includes('%') ? '' : '%'}` };
   }
-  return { label, value: formatStatisticValue(statistic.value, currency, statistic.label) };
+  return { id: normalizeMetricId(label), label, value: formatStatisticValue(statistic.value, currency, statistic.label) };
 }
 
 function getPositionAnalysis(positions: StatementPosition[], accountCurrency?: string, accountValue?: number | null) {

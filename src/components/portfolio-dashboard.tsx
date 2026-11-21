@@ -9,6 +9,7 @@ import type { LocalizationMessages } from '@/i18n/translations';
 import {
   getLocalizedMetricDescription,
   localizeMetricLabel,
+  normalizeMetricId,
 } from '@/i18n/metric-localization';
 import type { ImportedReport } from '@/utils/imported-files';
 import type { Metric } from '@/utils/portfolio-metrics';
@@ -150,12 +151,12 @@ function MetricList({
         <Pressable
           key={`${metric.label}-${index}`}
           accessibilityRole="button"
-          accessibilityLabel={`${localizeMetricLabel(metric.label, locale)}, ${metric.value}`}
+          accessibilityLabel={`${localizeMetricLabel(metric.id ?? normalizeMetricId(metric.label), locale, metric.label)}, ${metric.value}`}
           accessibilityHint={messages.portfolio.openMetricHint}
           onPress={() => onSelect(metric)}
           style={({ pressed }) => [styles.metricRow, pressed && styles.metricPressed]}>
           <ThemedText type="small" style={styles.metricLabel}>
-            {localizeMetricLabel(metric.label, locale)}
+            {localizeMetricLabel(metric.id ?? normalizeMetricId(metric.label), locale, metric.label)}
           </ThemedText>
           <ThemedText type="small" style={styles.metricValue}>{metric.value}</ThemedText>
         </Pressable>
@@ -183,11 +184,11 @@ function MetricDialog({
       <View style={styles.modalBackdrop}>
         <ThemedView type="backgroundElement" style={styles.metricDialog}>
           <ThemedText type="subtitle" style={styles.metricDialogTitle}>
-            {metric ? localizeMetricLabel(metric.label, locale) : ''}
+            {metric ? localizeMetricLabel(metric.id ?? normalizeMetricId(metric.label), locale, metric.label) : ''}
           </ThemedText>
           <ThemedText type="smallBold">{metric?.value}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {metric ? getLocalizedMetricDescription(metric.label, locale) : ''}
+            {metric ? getLocalizedMetricDescription(metric.id ?? normalizeMetricId(metric.label), locale) : ''}
           </ThemedText>
           {tradeDetails && (
             <View style={styles.assessment}>
@@ -216,18 +217,20 @@ function getTradeDetails(
   locale: Locale,
   messages: LocalizationMessages
 ) {
-  if (!/^(?:Win Rate|Profit Factor|Payoff Ratio|Expectancy)$/i.test(label)) {
+  const tradeMetricIds = ['winRate', 'profitFactor', 'payoffRatio', 'expectancy'] as const;
+  const labelId = normalizeMetricId(label);
+  if (!tradeMetricIds.includes(labelId as typeof tradeMetricIds[number])) {
     return null;
   }
 
   const getMetric = (name: string) =>
-    metrics.find((metric) => metric.label.toLowerCase() === name.toLowerCase());
-  const winRateMetric = getMetric('Win Rate');
-  const payoffMetric = getMetric('Payoff Ratio');
-  const expectancyMetric = getMetric('Expectancy');
-  const profitFactorMetric = getMetric('Profit Factor');
+    metrics.find((metric) => (metric.id ?? normalizeMetricId(metric.label)) === normalizeMetricId(name));
+  const winRateMetric = getMetric('winRate');
+  const payoffMetric = getMetric('payoffRatio');
+  const expectancyMetric = getMetric('expectancy');
+  const profitFactorMetric = getMetric('profitFactor');
   const tradeCountMetric = metrics.find((item) =>
-    /^(?:закрытых сделок|closed trades)$/i.test(item.label)
+    (item.id ?? normalizeMetricId(item.label)) === 'closedTrades'
   );
   const winRate = winRateMetric ? parseStatisticNumber(winRateMetric.value) : null;
   const payoff = payoffMetric ? parseStatisticNumber(payoffMetric.value) : null;
@@ -247,7 +250,7 @@ function getTradeDetails(
     const breakEven = 100 / (1 + payoff);
     const margin = winRate - breakEven;
     rows.push(
-      `${localizeMetricLabel('Win Rate', locale)} ${winRateMetric.value} · ${interpolate(messages.portfolio.breakeven, { value: formatNumber(breakEven, locale) })} · ${margin > 0 ? '+' : ''}${formatNumber(margin, locale)} ${messages.portfolio.percentagePoints}`
+      `${localizeMetricLabel('winRate', locale)} ${winRateMetric.value} · ${interpolate(messages.portfolio.breakeven, { value: formatNumber(breakEven, locale) })} · ${margin > 0 ? '+' : ''}${formatNumber(margin, locale)} ${messages.portfolio.percentagePoints}`
     );
     signals.push(Math.sign(margin));
   }
@@ -262,10 +265,10 @@ function getTradeDetails(
 
   const summary = [
     expectancy !== null
-      ? `${localizeMetricLabel('Expectancy', locale)} ${expectancyMetric?.value}`
+      ? `${localizeMetricLabel('expectancy', locale)} ${expectancyMetric?.value}`
       : '',
     profitFactorMetric
-      ? `${localizeMetricLabel('Profit Factor', locale)} ${profitFactorMetric.value}`
+      ? `${localizeMetricLabel('profitFactor', locale)} ${profitFactorMetric.value}`
       : '',
     tradeCountMetric
       ? interpolate(messages.portfolio.trades, {

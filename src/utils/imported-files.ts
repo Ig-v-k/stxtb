@@ -7,7 +7,10 @@ export function sanitizeImportedFileName(name: string) {
   return sanitized || 'PDF-отчет';
 }
 
+import type { MetricId } from '../i18n/metric-localization';
+
 export type StatementStatistic = {
+  id?: MetricId;
   label: string;
   value: string;
 };

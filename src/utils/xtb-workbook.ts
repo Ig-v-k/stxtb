@@ -3,6 +3,7 @@ import * as XLSX from '@e965/xlsx';
 import type { ImportedReport, StatementPeriod, StatementPosition, StatementStatistic } from './imported-files';
 import { formatDecimal } from './number-format';
 import { parsePeriodDate, parseStatisticNumber } from './statement-stats';
+import { normalizeMetricId } from '../i18n/metric-localization';
 
 type Cell = string | number | boolean | Date | null | undefined;
 type Row = Cell[];
@@ -136,7 +137,7 @@ function addStatistic(statistics: StatementStatistic[], label: string, value: st
   if (existing) {
     existing.value = value;
   } else {
-    statistics.push({ label, value });
+    statistics.push({ id: normalizeMetricId(label), label, value });
   }
 }
 
