@@ -236,7 +236,7 @@ function getXtbSheetRows(workbook: XLSX.WorkBook) {
   return rowsByName;
 }
 
-// Some XLSX exports leave zero sizes in local ZIP headers despite valid central-directory sizes.
+// Some XLSX exports leave local ZIP sizes or data descriptors inconsistent with the central directory.
 function repairZeroLocalZipSizes(bytes: Uint8Array) {
   const endOfCentralDirectorySignature = [0x50, 0x4b, 0x05, 0x06];
   const centralDirectorySignature = [0x50, 0x4b, 0x01, 0x02];
@@ -266,6 +266,16 @@ function repairZeroLocalZipSizes(bytes: Uint8Array) {
   let directoryOffset = readUint32(endOffset + 16);
   const repaired = bytes.slice();
   let changed = false;
+  const writeUint16 = (offset: number, value: number) => {
+    repaired[offset] = value & 0xff;
+    repaired[offset + 1] = (value >>> 8) & 0xff;
+  };
+  const writeUint32 = (offset: number, value: number) => {
+    repaired[offset] = value & 0xff;
+    repaired[offset + 1] = (value >>> 8) & 0xff;
+    repaired[offset + 2] = (value >>> 16) & 0xff;
+    repaired[offset + 3] = (value >>> 24) & 0xff;
+  };
 
   for (let index = 0; index < entryCount; index += 1) {
     if (
@@ -275,7 +285,6 @@ function repairZeroLocalZipSizes(bytes: Uint8Array) {
       return bytes;
     }
 
-    const flags = readUint16(directoryOffset + 8);
     const compressedSize = readUint32(directoryOffset + 20);
     const uncompressedSize = readUint32(directoryOffset + 24);
     const nameLength = readUint16(directoryOffset + 28);
@@ -291,7 +300,6 @@ function repairZeroLocalZipSizes(bytes: Uint8Array) {
     directoryOffset = nextDirectoryOffset;
 
     if (
-      flags & 0x8 ||
       compressedSize === 0xffffffff ||
       uncompressedSize === 0xffffffff ||
       localOffset === 0xffffffff ||
@@ -301,22 +309,29 @@ function repairZeroLocalZipSizes(bytes: Uint8Array) {
       continue;
     }
 
+    const localFlags = readUint16(localOffset + 6);
     const localNameLength = readUint16(localOffset + 26);
     const localExtraLength = readUint16(localOffset + 28);
     if (localOffset + 30 + localNameLength + localExtraLength > bytes.length) {
       continue;
     }
 
+    const hasDataDescriptor = (localFlags & 0x8) !== 0;
+    if (hasDataDescriptor) {
+      // The parser reads descriptor sizes from the file body, which may be missing or malformed.
+      writeUint16(localOffset + 6, localFlags & ~0x8);
+      changed = true;
+    }
+
     for (const [fieldOffset, centralValue] of [
       [18, compressedSize],
       [22, uncompressedSize],
     ]) {
-      if (readUint32(localOffset + fieldOffset) === 0 && centralValue !== 0) {
-        const offset = localOffset + fieldOffset;
-        repaired[offset] = centralValue & 0xff;
-        repaired[offset + 1] = (centralValue >>> 8) & 0xff;
-        repaired[offset + 2] = (centralValue >>> 16) & 0xff;
-        repaired[offset + 3] = (centralValue >>> 24) & 0xff;
+      if (hasDataDescriptor) {
+        writeUint32(localOffset + fieldOffset, centralValue);
+        changed = true;
+      } else if (readUint32(localOffset + fieldOffset) === 0 && centralValue !== 0) {
+        writeUint32(localOffset + fieldOffset, centralValue);
         changed = true;
       }
     }
