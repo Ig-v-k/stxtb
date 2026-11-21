@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { SettingsButton } from '@/components/settings-button';
-import { Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useSessionReports } from '@/hooks/use-session-reports';
 import { useTheme } from '@/hooks/use-theme';
 import {
@@ -436,9 +437,15 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.five,
-    paddingBottom: Spacing.six,
+    paddingHorizontal: Spacing.one,
+    paddingTop: Spacing.three,
+    paddingBottom: BottomTabInset + Spacing.three,
+    ...Platform.select({
+      web: {
+        paddingHorizontal: Spacing.four,
+        paddingTop: Spacing.five,
+      },
+    }),
   },
   header: {
     gap: Spacing.two,
